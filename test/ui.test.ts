@@ -51,6 +51,12 @@ test("thinking toggle disables reasoning controls when off", () => {
   assert.match(css, /\.model-meta-item\.thinking-off/);
 });
 
+test("capabilities are explained as config metadata, not model behavior", () => {
+  assert.match(html, /only used to generate config/i);
+  assert.match(html, /do not change how the model or provider behaves/i);
+  assert.match(html, /To test what a model actually accepts, use <b>Try it now<\/b> in <b>How to Use<\/b>/i);
+});
+
 test("dashboard labels totals and model settings stay manual", () => {
   assert.match(html, /Totals below add up every row shown/);
   assert.match(html, /id="p-model-meta"/);

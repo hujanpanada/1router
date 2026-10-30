@@ -112,12 +112,10 @@
             <textarea id="p-models" rows="5" placeholder="deepseek-chat&#10;deepseek-reasoner"></textarea>
           </label>
           <div class="field span-2">
-            <span>Model capabilities</span>
-            <div id="p-model-meta" class="model-meta-list"><p class="muted">Add or fetch models, then set Images and Reasoning only when you know them. Unknown reasoning stays Unknown.</p></div>
+            <span>Model capabilities <span class="muted">(config only)</span></span>
+            <p class="muted capability-note">These settings are only used to generate config (for example Pi’s <code>models.json</code>). They do not change how the model or provider behaves, and they do not override a harness’s own config. To test what a model actually accepts, use <b>Try it now</b> in <b>How to Use</b>.</p>
+            <div id="p-model-meta" class="model-meta-list"><p class="muted">Add or fetch models, then describe their image and thinking support for generated config.</p></div>
           </div>
-          <label class="field span-2">Reasoning (optional)
-            <span class="muted">Set reasoning levels and a default manually per model. Use Try a thinking level in How to Use to test a level before enabling it.</span>
-          </label>
         </div>
         <div class="form-actions">
           <span id="p-msg" class="form-msg"></span>

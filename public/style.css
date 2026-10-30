@@ -188,6 +188,7 @@ a.btn:active { transform: translateY(1px) scale(.98); }
 .form-msg:empty::before, .result:empty::before { content: "\00a0"; }
 
 .totals-note { margin: 0 0 -.25rem; }
+.capability-note { margin: 0; line-height: 1.5; }
 
 /* ---------- model capability editor ---------- */
 .model-meta-list { display: flex; flex-direction: column; gap: .85rem; }
