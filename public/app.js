@@ -53,18 +53,18 @@ document.querySelectorAll("button.tab").forEach((b) => b.addEventListener("click
 }));
 
 // ---------- dashboard ----------
-/** Weekly buckets arrive as the Monday's date (YYYY-MM-DD); show the full week range. */
+/** Weekly buckets arrive as Monday (YYYY-MM-DD); show Monday through today (current week) or Sunday. */
 function formatPeriod(value, period) {
   if (period !== "weekly") return value;
   const start = new Date(value + "T00:00:00"); // local time, no UTC shift
   if (Number.isNaN(start.getTime())) return value;
-  const end = new Date(start);
-  end.setDate(start.getDate() + 6);
+  const sunday = new Date(start);
+  sunday.setDate(start.getDate() + 6);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const fmtDate = (d) => d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
-  const isCurrentWeek = today >= start && today <= end;
-  return `${fmtDate(start)} – ${isCurrentWeek ? "Today" : fmtDate(end)}`;
+  const end = today >= start && today <= sunday ? today : sunday;
+  const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return `${iso(start)} – ${iso(end)}`;
 }
 async function loadRequests() {
   const limit = $("req-limit")?.value ?? "50";

@@ -39,11 +39,12 @@ test("default-password banner never shows the password and has an aligned action
   assert.match(js, /default-banner-settings/);
 });
 
-test("weekly breakdown rows show Monday-to-end-of-week range in the UI", () => {
+test("weekly breakdown rows use YYYY-MM-DD ranges like every other period", () => {
   assert.match(js, /function formatPeriod\(value, period\)/);
   assert.match(js, /period !== "weekly"/);
   assert.match(js, /setDate\(start\.getDate\(\) \+ 6\)/);
-  assert.match(js, /"Today"/);
+  assert.match(js, /padStart\(2, "0"\)/);
+  assert.doesNotMatch(js, /"Today"/);
   assert.match(js, /formatPeriod\(r\.period, period\)/);
 });
 
