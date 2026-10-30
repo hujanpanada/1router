@@ -23,6 +23,14 @@ from a built-in web dashboard.
 > protocols, or do fallback routing. It forwards same-protocol requests
 > transparently and counts what providers report.
 
+**Inspired by [Pi](https://pi.dev).** 1Router was built by a Pi user, for
+Pi users first: it borrows Pi's minimalist philosophy (small, transparent,
+no magic) and its three API types (`openai-completions`,
+`openai-responses`, `anthropic-messages`) from Pi's `models.json` design —
+then hides all of that behind a dashboard so you never have to edit the
+file by hand. It also generates a ready-to-paste Pi `models.json` snippet
+for your providers (see the How to Use tab in the dashboard).
+
 ## Use cases
 
 - **"Which of my tools is burning tokens?"** — give Pi, your laptop, and
@@ -151,3 +159,14 @@ sessions, providers, keys, usage, stats), `src/server.ts` (proxy + admin API),
 `src/cli.ts` (optional key management from the terminal),
 `public/` (vanilla HTML/CSS/JS dashboard). See `PLAN.md` for scope and
 `AGENTS.md` if you're an AI assistant working on this repo.
+
+## Credits
+
+- [Pi](https://pi.dev) ([earendil-works/pi](https://github.com/earendil-works/pi))
+  — the minimalist agent harness that inspired this project, its API-type
+  taxonomy, and its `models.json` model. Pi is MIT-licensed; 1Router is an
+  independent project and is not affiliated with or endorsed by Pi.
+
+## License
+
+[MIT](LICENSE) — © Panada.
