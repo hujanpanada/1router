@@ -46,6 +46,15 @@ test("reasoning controls use a structured grid layout", () => {
   assert.doesNotMatch(css, /\.reasoning-controls\s*\{[^}]*display:\s*contents/);
 });
 
+test("capability panel has inner margin and compact capability toggles", () => {
+  assert.match(html, /capability-panel/);
+  assert.match(js, /capability-toggles/);
+  assert.match(css, /\.capability-panel\s*\{[^}]*padding:\s*1\.5rem/);
+  assert.match(css, /\.capability-toggles\s*\{[^}]*display:\s*flex/);
+  assert.match(css, /\.capability-toggle\s*\{[^}]*min-height:\s*32px/);
+  assert.match(css, /\.model-meta-item\s*\{[^}]*padding:\s*1rem/);
+});
+
 test("thinking toggle disables reasoning controls when off", () => {
   assert.match(js, /Thinking allowed/);
   assert.match(js, /data-meta-thinking/);

@@ -188,16 +188,25 @@ a.btn:active { transform: translateY(1px) scale(.98); }
 .form-msg:empty::before, .result:empty::before { content: "\00a0"; }
 
 .totals-note { margin: 0 0 -.25rem; }
-.capability-note { margin: 0; line-height: 1.5; }
+.capability-note { margin: 0 0 1rem; line-height: 1.5; }
+.capability-panel { padding: 1.5rem; }
+.capability-panel .field { margin-bottom: 1rem; }
 
 /* ---------- model capability editor ---------- */
-.model-meta-list { display: flex; flex-direction: column; gap: .85rem; }
-.model-meta-item { border: 1px solid var(--border-soft); background: var(--panel-2); border-radius: 10px; padding: .8rem; }
+.model-meta-list { display: flex; flex-direction: column; gap: .85rem; margin-top: 1rem; }
+.model-meta-item { border: 1px solid var(--border-soft); background: var(--panel-2); border-radius: 10px; padding: 1rem; }
 .model-meta-head { display: flex; align-items: center; justify-content: space-between; gap: .75rem; margin-bottom: .7rem; }
 .model-meta-controls { display: flex; flex-direction: column; gap: .8rem; }
 .model-meta-controls label { min-width: 0; }
 .checkline { display: flex !important; flex-direction: row !important; align-items: center; gap: .5rem !important; font-weight: 600; }
 .checkline input { width: auto; min-height: auto; }
+.capability-toggles { display: flex; flex-wrap: wrap; gap: .5rem; }
+.capability-toggle {
+  display: inline-flex; align-items: center; gap: .45rem; width: auto; min-height: 32px;
+  padding: .35rem .6rem; border: 1px solid var(--border-soft); border-radius: 7px;
+  background: #14161a; font-size: .88rem; font-weight: 600; cursor: pointer;
+}
+.capability-toggle input { width: 14px; height: 14px; min-height: auto; margin: 0; accent-color: var(--accent); }
 .meta-source { color: var(--muted-2); font-size: .78rem; white-space: nowrap; }
 .reasoning-controls { display: grid; grid-template-columns: minmax(230px, 340px) minmax(0, 1fr); gap: .8rem 1.25rem; align-items: start; border: 0; border-top: 1px solid var(--border-soft); padding: .8rem 0 0; margin: 0; min-width: 0; }
 .reasoning-default { max-width: 340px; }

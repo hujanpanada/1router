@@ -114,8 +114,10 @@ function renderModelMetaEditor() {
     return `<div class="model-meta-item ${thinkingOn ? "" : "thinking-off"}" data-model-meta="${esc(modelId)}">
       <div class="model-meta-head"><code>${esc(modelId)}</code><span class="meta-source">Thinking: ${thinkingOn ? "Allowed" : "None"} · Reasoning: ${thinkingOn && meta.reasoning?.levels?.length ? "Set manually" : "Not set"} · Default: ${esc(thinkingOn && meta.defaultEffort !== "provider" ? meta.defaultEffort : "Provider default")}</span></div>
       <div class="model-meta-controls">
-        <label class="checkline"><input type="checkbox" data-meta-image ${meta.imageInput === true ? "checked" : ""}> Images allowed</label>
-        <label class="checkline"><input type="checkbox" data-meta-thinking ${thinkingOn ? "checked" : ""}> Thinking allowed</label>
+        <div class="capability-toggles">
+          <label class="capability-toggle"><input type="checkbox" data-meta-image ${meta.imageInput === true ? "checked" : ""}> Images allowed</label>
+          <label class="capability-toggle"><input type="checkbox" data-meta-thinking ${thinkingOn ? "checked" : ""}> Thinking allowed</label>
+        </div>
         <fieldset class="reasoning-controls" ${thinkingOn ? "" : "disabled"}>
           <label class="field reasoning-default">Reasoning default
             <select data-meta-default>${["provider", ...REASONING_LEVELS].map((level) => `<option value="${level}" ${(meta.defaultEffort ?? "provider") === level ? "selected" : ""}>${level === "provider" ? "Provider default" : level}</option>`).join("")}</select>
