@@ -13,6 +13,8 @@ No config files, no cloud account, no telemetry: everything (providers,
 keys, usage history) lives in one local SQLite database and is managed
 from a built-in web dashboard.
 
+![1Router dashboard — API token usage by provider, with recent requests](images/1router-dashboard.png)
+
 - 🧮 Daily / weekly / monthly / yearly / all-time token totals
 - 🔑 Multiple named client API keys (one per device or app, revocable)
 - 🔌 Three API types: `openai-completions`, `openai-responses`, `anthropic-messages`
