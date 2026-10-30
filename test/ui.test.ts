@@ -47,6 +47,10 @@ test("weekly breakdown rows show Monday-to-end-of-week range in the UI", () => {
   assert.match(js, /formatPeriod\(r\.period, period\)/);
 });
 
+test("brand subheading says API token usage dashboard", () => {
+  assert.ok(html.includes("API token usage dashboard"), "brand subheading must say 'API token usage dashboard'");
+});
+
 test("layout primitives exist for aligned panels/tables/forms", () => {
   for (const cls of ["topbar", "panel", "table-wrap", "form-grid", "cards"]) {
     assert.ok(css.includes("." + cls), `style.css missing .${cls}`);
