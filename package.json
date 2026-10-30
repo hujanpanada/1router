@@ -1,0 +1,19 @@
+{
+  "name": "1router",
+  "version": "0.1.0",
+  "description": "Minimal token-usage counting proxy for OpenAI- and Anthropic-compatible APIs (Pi models.json format)",
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=22.19" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test \"dist/test/*.test.js\"",
+    "start": "npm run build && node dist/src/main.js",
+    "key:create": "npm run build --silent && node dist/src/cli.js key:create",
+    "key:list": "npm run build --silent && node dist/src/cli.js key:list"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.8.0"
+  }
+}

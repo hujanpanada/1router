@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>1Router</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-mark">1R</div>
+    <div class="brand-text"><h1>1Router</h1><span>Token usage dashboard</span></div>
+  </div>
+  <nav class="tabs" aria-label="Main">
+    <button class="tab active" data-tab="dashboard">Dashboard</button>
+    <button class="tab" data-tab="providers">Providers</button>
+    <button class="tab" data-tab="keys">API Keys</button>
+    <button class="tab" data-tab="guide">How to Use</button>
+    <button class="tab" data-tab="settings">Settings</button>
+  </nav>
+  <button id="logout" class="btn btn-ghost">Log out</button>
+</header>
+
+<main class="container">
+  <div id="default-banner" class="banner alert-banner" hidden>
+    <span class="alert-icon" aria-hidden="true">⚠️</span>
+    <p class="alert-text"><strong>Your dashboard password hasn’t been changed yet.</strong> <span>Change it to keep your dashboard secure.</span></p>
+    <button type="button" id="default-banner-settings" class="btn btn-small alert-action">Change password</button>
+  </div>
+  <div id="status" role="alert"></div>
+
+  <!-- Dashboard -->
+  <section id="tab-dashboard" class="page">
+    <div class="panel toolbar">
+      <div class="toolbar-controls">
+        <label class="field field-inline">Period
+          <select id="period">
+            <option value="daily" selected>Daily</option><option value="weekly">Weekly</option>
+            <option value="monthly">Monthly</option><option value="yearly">Yearly</option><option value="all">All time</option>
+          </select>
+        </label>
+        <label class="field field-inline">Group by
+          <select id="groupBy">
+            <option value="provider" selected>Provider</option><option value="key">API key</option><option value="model">Model</option>
+          </select>
+        </label>
+      </div>
+      <button id="refresh-stats" class="btn btn-primary">Refresh</button>
+    </div>
+
+    <div class="cards">
+      <div class="card"><div class="n" id="c-req">–</div><div class="l">Requests</div></div>
+      <div class="card"><div class="n" id="c-in">–</div><div class="l">Input tokens</div></div>
+      <div class="card"><div class="n" id="c-out">–</div><div class="l">Output tokens</div></div>
+      <div class="card"><div class="n" id="c-cache">–</div><div class="l">Cache read / write</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>Usage breakdown</h2></div>
+      <div class="table-wrap">
+        <table class="table">
+          <thead><tr><th>Period</th><th id="th-group">Provider</th><th class="num">Requests</th><th class="num">Input</th><th class="num">Output</th><th class="num">Cache read</th><th class="num">Cache write</th></tr></thead>
+          <tbody id="stats-body"><tr><td colspan="7" class="muted">No data yet — add a provider, create a key, and make a request.</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Recent requests</h2>
+        <label class="field field-inline">Show
+          <select id="req-limit">
+            <option value="10">10</option>
+            <option value="20">20</option>
+            <option value="50" selected>50</option>
+            <option value="100">100</option>
+          </select>
+          latest
+        </label>
+      </div>
+      <div class="table-wrap">
+        <table class="table">
+          <thead><tr><th>Time</th><th>Provider / model</th><th class="num">Input</th><th class="num">Output</th><th class="num">Cache R/W</th><th class="num">Status</th><th class="num">Latency</th></tr></thead>
+          <tbody id="req-body"><tr><td colspan="7" class="muted">—</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- Providers -->
+  <section id="tab-providers" class="page" hidden>
+    <div class="panel">
+      <div class="panel-head"><h2 id="provider-form-title">Add a provider</h2></div>
+      <p class="muted panel-note">A provider is where your requests actually go (OpenAI, Anthropic, DeepSeek, a local Ollama…). 1Router forwards to it and counts the tokens.</p>
+      <form id="provider-form">
+        <input type="hidden" id="p-id">
+        <div class="form-grid">
+          <label class="field">Display name <input id="p-name" placeholder="DeepSeek" required></label>
+          <label class="field">Slug (used in model names) <input id="p-slug" placeholder="deepseek"></label>
+          <label class="field">API type
+            <select id="p-api">
+              <option value="openai-completions">openai-completions (Chat Completions)</option>
+              <option value="openai-responses">openai-responses (Responses)</option>
+              <option value="anthropic-messages">anthropic-messages (Anthropic)</option>
+            </select>
+          </label>
+          <label class="field">Base URL <input id="p-baseurl" placeholder="https://api.deepseek.com/v1" required></label>
+          <label class="field span-2">Provider API key <input id="p-apikey" type="password" autocomplete="off" placeholder="sk-… (leave blank when editing to keep the saved key)"></label>
+          <label class="field span-2">Models (one per line)
+            <textarea id="p-models" rows="5" placeholder="deepseek-chat&#10;deepseek-reasoner"></textarea>
+          </label>
+        </div>
+        <div class="form-actions">
+          <span id="p-msg" class="form-msg"></span>
+          <div class="action-group">
+            <button type="button" id="p-fetch" class="btn">Fetch models from provider</button>
+            <button type="button" id="p-cancel" class="btn btn-ghost" hidden>Cancel edit</button>
+            <button type="submit" id="p-save" class="btn btn-primary">Save provider</button>
+          </div>
+        </div>
+      </form>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>Your providers</h2></div>
+      <div class="table-wrap">
+        <table class="table">
+          <thead><tr><th>Name</th><th>Slug</th><th>API type</th><th>Base URL</th><th>Key</th><th>Models</th><th class="actions-col">Actions</th></tr></thead>
+          <tbody id="providers-body"><tr><td colspan="7" class="muted">None yet.</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- API keys -->
+  <section id="tab-keys" class="page" hidden>
+    <div class="panel">
+      <div class="panel-head"><h2>Create a 1Router API key</h2></div>
+      <p class="muted panel-note">These keys are what your apps/tools put in their settings to talk to 1Router. Create one per device or app so you can see usage per key and revoke them separately. They are <b>not</b> your provider keys.</p>
+      <form id="key-form" class="inline-form">
+        <label class="field grow">Key name <input id="k-name" placeholder="e.g. laptop, work-pc, pi" required></label>
+        <button type="submit" class="btn btn-primary">Create key</button>
+      </form>
+      <div id="new-key" class="banner" hidden>
+        <span>New key (copy it now — it will never be shown again):</span>
+        <code id="new-key-value"></code>
+        <button id="copy-new-key" type="button" class="btn btn-small">Copy</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>Your keys</h2></div>
+      <div class="table-wrap">
+        <table class="table">
+          <thead><tr><th>Name</th><th>Created</th><th>Last used</th><th>Status</th><th class="actions-col">Actions</th></tr></thead>
+          <tbody id="keys-body"><tr><td colspan="5" class="muted">None yet.</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- Guide -->
+  <section id="tab-guide" class="page" hidden>
+    <div class="panel">
+      <div class="panel-head"><h2>How to use 1Router</h2></div>
+      <ol class="steps">
+        <li>Add your provider in the <b>Providers</b> tab (with <i>their</i> API key).</li>
+        <li>Create a 1Router key in the <b>API Keys</b> tab.</li>
+        <li>In your app/tool, use the settings below. That's it — usage shows up in Dashboard.</li>
+      </ol>
+      <div class="guide-grid">
+        <div class="guide-label">Your 1Router base URL</div>
+        <div class="guide-value"><code id="g-base"></code><button class="btn btn-small" data-copy="g-base">Copy</button></div>
+        <div class="guide-label">API key to use</div>
+        <div class="guide-value">A 1Router key (<code>sk-1r-…</code>) from the API Keys tab — <b>never</b> your provider key.</div>
+        <div class="guide-label">Model name</div>
+        <div class="guide-value"><code>provider/model</code>, exactly as listed in Providers, e.g. <code id="g-model-example">deepseek/deepseek-chat</code></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>Try it now</h2></div>
+      <div class="try-grid">
+        <label class="field grow">Model
+          <select id="g-model"></select>
+        </label>
+        <label class="field grow">1Router API key
+          <input id="g-key" type="text" autocomplete="off" spellcheck="false" placeholder="Paste a 1Router key (sk-1r-…)">
+        </label>
+        <button id="g-test" class="btn btn-primary">Send test request</button>
+      </div>
+      <div id="g-test-result" class="result" role="status"></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>curl</h2><button class="btn btn-small" data-copy="g-curl">Copy curl</button></div>
+      <pre id="g-curl" class="code-block"></pre>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>Pi (<code>models.json</code>)</h2><button class="btn btn-small" data-copy="g-pi">Copy Pi config</button></div>
+      <p class="muted panel-note">Paste this into your Pi <code>models.json</code> (replace the key), then pick the model in Pi as usual.</p>
+      <pre id="g-pi" class="code-block"></pre>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>If something goes wrong</h2></div>
+      <div class="table-wrap">
+        <table class="table table-text">
+          <thead><tr><th>Error</th><th>What it means</th></tr></thead>
+          <tbody>
+            <tr><td><code>401</code></td><td>The app is not using a 1Router key. Use a <code>sk-1r-…</code> key from API Keys — not your provider key.</td></tr>
+            <tr><td><code>400 Unknown model</code></td><td>Model name must be <code>provider/model</code> exactly as shown in the Providers tab.</td></tr>
+            <tr><td><code>400 … wrong endpoint</code></td><td>The model type and endpoint don't match — check the How-to endpoint for its API type.</td></tr>
+            <tr><td><code>502 Could not reach provider</code></td><td>1Router can't reach the provider's Base URL. Check the URL in Providers (and that local servers like Ollama are running).</td></tr>
+            <tr><td>Request works but shows “no usage”</td><td>The provider didn't report token usage for that request, so there was nothing to count.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- Settings -->
+  <section id="tab-settings" class="page" hidden>
+    <div class="panel narrow">
+      <div class="panel-head"><h2>Change dashboard password</h2></div>
+      <form id="pw-form" class="stack-form">
+        <label class="field">Current password <input id="pw-current" type="password" autocomplete="current-password"></label>
+        <label class="field">New password (min 6 chars) <input id="pw-new" type="password" autocomplete="new-password"></label>
+        <div class="form-actions">
+          <span id="pw-msg" class="form-msg"></span>
+          <button type="submit" class="btn btn-primary">Change password</button>
+        </div>
+      </form>
+    </div>
+  </section>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
