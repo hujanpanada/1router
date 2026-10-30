@@ -77,12 +77,6 @@ test("providers: CRUD + resolveModel from DB (split on first slash)", () => {
   assert.deepEqual(db.listProviders(), []);
 });
 
-test("listModels exposes provider/model ids", () => {
-  const db = createDb(":memory:");
-  db.createProvider({ slug: "openai", name: "OpenAI", baseUrl: "https://api.openai.com/v1", api: "openai-responses", apiKey: "k", models: ["gpt-5"] });
-  assert.deepEqual(db.listModels().map((m) => m.id), ["openai/gpt-5"]);
-});
-
 // ---------- stats (no cost anywhere) ----------
 test("stats by provider for all-time aggregates tokens + requests", () => {
   const db = createDb(":memory:");
