@@ -477,7 +477,9 @@ export function createServer(opts: ServerOptions): http.Server {
       }
 
       if (req.method === "GET" && path in STATIC) {
-        if (!hasSession(req)) {
+        // The login page needs the shared stylesheet before a session exists.
+        // Scripts and the dashboard itself still require login.
+        if (path !== "/style.css" && !hasSession(req)) {
           if (path === "/" || path === "/index.html") { res.writeHead(302, { location: "/login" }); return res.end(); }
           return json(res, 401, errBody("Login required", "authentication_error"));
         }
