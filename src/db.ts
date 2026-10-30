@@ -417,11 +417,15 @@ export function createDb(path: string, opts: { now?: () => number } = {}): Db {
     },
     stats({ period, groupBy }) {
       const groupExpr = groupBy === "key" ? "k.name" : groupBy === "provider" ? "e.provider" : "e.provider || '/' || e.model";
+      // "daily" is presented as Today: only the current local calendar day,
+      // not every historical day bucket. Other periods keep their buckets.
+      const where = period === "daily" ? "WHERE date(e.ts/1000,'unixepoch','localtime') = date('now','localtime')" : "";
       const rows = sqlite.prepare(`
         SELECT ${PERIOD_EXPR[period]} AS period, ${groupExpr} AS grp,
                COUNT(*) AS requests, COALESCE(SUM(e.input),0) AS input, COALESCE(SUM(e.output),0) AS output,
                COALESCE(SUM(e.cache_read),0) AS cache_read, COALESCE(SUM(e.cache_write),0) AS cache_write
         FROM usage_events e JOIN client_keys k ON k.id = e.client_key_id
+        ${where}
         GROUP BY period, grp ORDER BY period DESC, requests DESC`).all() as any[];
       return rows.map((r) => ({
         period: r.period, group: r.grp, requests: r.requests, input: r.input, output: r.output,

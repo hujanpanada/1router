@@ -121,15 +121,15 @@ Endpoints by API type:
 
 ### 5. Read the Dashboard
 
-- **Period** (daily/weekly/monthly/yearly/all-time) × **group by**
-  (provider / API key / model). Weekly rows show the Monday–Sunday range.
+- **Period** (Today/weekly/monthly/yearly/all-time) × **group by**
+  (provider / API key / model). Today means the current local calendar
+  day only. Weekly rows show the Monday–Sunday range.
 - **Recent Requests** (show 10–100) lists each call with its token split,
   HTTP status, latency, and the reasoning **effort** the client requested
   (`provider` when the client did not specify one). `(no usage)` means the
   provider didn't report token counts for that request — nothing to count.
 - The summary cards always add up **every row shown** for the selected
-  period grouping (choosing Daily groups all history by day; it is not a
-  today-only filter).
+  period.
 
 ### Troubleshooting
 

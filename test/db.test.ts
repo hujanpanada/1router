@@ -244,9 +244,12 @@ test("stats grouped by client key and by model; periods bucket correctly", () =>
 
   const today = new Date(); today.setHours(10, 30, 0, 0);
   const yesterday = new Date(Date.now() - 86400_000); yesterday.setHours(10, 30, 0, 0);
-  db.insertEvent(ev({ ts: today.getTime() }));
-  db.insertEvent(ev({ ts: yesterday.getTime() }));
-  assert.equal(db.stats({ period: "daily", groupBy: "provider" }).filter((r) => r.group === "openai").length >= 2, true);
+  db.insertEvent(ev({ clientKeyId: a.id, ts: today.getTime() }));
+  db.insertEvent(ev({ clientKeyId: a.id, ts: yesterday.getTime() }));
+  const daily = db.stats({ period: "daily", groupBy: "provider" });
+  assert.deepEqual(daily.map((r) => [r.period, r.group, r.requests]), [
+    [`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`, "openai", 1],
+  ]);
 });
 
 test("serialize produces a restorable backup without sessions", async () => {

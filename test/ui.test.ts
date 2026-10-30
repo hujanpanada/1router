@@ -84,6 +84,11 @@ test("How to Use shows the provider-test-capabilities-config flow", () => {
   assert.match(html, /generated config|Copy the config/i);
 });
 
+test("period selector calls the daily view Today", () => {
+  assert.match(html, /<option value="daily" selected>Today<\/option>/);
+  assert.doesNotMatch(html, /<option value="daily"[^>]*>Daily<\/option>/);
+});
+
 test("dashboard labels totals and model settings stay manual", () => {
   assert.match(html, /Totals below add up every row shown/);
   assert.match(html, /id="p-model-meta"/);
