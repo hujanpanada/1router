@@ -210,7 +210,7 @@ export function createServer(opts: ServerOptions): http.Server {
       return json(res, 400, errBody(`Model ${body.model} is not marked as image-capable in 1Router. Enable Images for it in Providers first — 1Router blocks image input unless explicitly allowed.`));
     }
 
-    const thinkingDisabled = target.thinking !== true;
+    const thinkingDisabled = target.thinking === false;
     const effectiveBody = thinkingDisabled ? stripThinking(target.api, body) : body;
     const streaming = effectiveBody.stream === true;
     const upstreamBody = target.api === "openai-completions" && streaming
@@ -443,7 +443,7 @@ export function createServer(opts: ServerOptions): http.Server {
           modelId: id,
           imageInput: m.imageInput === true ? true : m.imageInput === false ? false : null,
           thinking: m.thinking === true ? true : m.thinking === false ? false : null,
-          reasoning: m.thinking === true && levels ? { levels, defaultLevel: m.defaultEffort ?? m.reasoning?.defaultLevel ?? "provider", source: "manual" } : null,
+          reasoning: m.thinking !== false && levels ? { levels, defaultLevel: m.defaultEffort ?? m.reasoning?.defaultLevel ?? "provider", source: "manual" } : null,
         };
         const existing = modelMeta.findIndex((x) => x.modelId === id);
         if (existing >= 0) modelMeta[existing] = meta; else modelMeta.push(meta);

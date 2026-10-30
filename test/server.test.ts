@@ -257,6 +257,33 @@ test("thinking disabled strips requested effort before forwarding", async () => 
   });
 });
 
+test("harness effort is recorded; 1Router reasoning default never overrides it", async () => {
+  const provider = db.listProviders().find((p) => p.slug === "fakeopenai")!;
+  db.updateProvider(provider.id, {
+    modelMeta: [{ modelId: "gpt-x", imageInput: true, thinking: true, reasoning: { levels: ["minimal", "low", "medium", "high", "xhigh", "max"], defaultLevel: "low" } }],
+  });
+  const res = await post("/v1/chat/completions", { model: "fakeopenai/gpt-x", messages: [], reasoning_effort: "max" });
+  assert.equal(res.status, 200);
+  assert.equal(lastUpstream.body.reasoning_effort, "max");
+  assert.equal(db.recentEvents(1)[0].effort, "max");
+
+  // Already-configured harness case: 1Router has not explicitly enabled or
+  // disabled thinking, so it must pass through and record Pi's effort.
+  db.updateProvider(provider.id, {
+    modelMeta: [{ modelId: "gpt-x", imageInput: true, thinking: null, reasoning: null }],
+  });
+  const unsetRes = await post("/v1/chat/completions", { model: "fakeopenai/gpt-x", messages: [], reasoning_effort: "max" });
+  assert.equal(unsetRes.status, 200);
+  assert.equal(lastUpstream.body.reasoning_effort, "max");
+  assert.equal(db.recentEvents(1)[0].effort, "max");
+  await post("/v1/chat/completions", { model: "fakeopenai/gpt-x", messages: [] });
+  assert.equal(db.recentEvents(1)[0].effort, "provider");
+
+  db.updateProvider(provider.id, {
+    modelMeta: [{ modelId: "gpt-x", imageInput: true, thinking: true, reasoning: { levels: ["low", "medium", "high"], defaultLevel: "provider" } }],
+  });
+});
+
 test("provider API exposes only explicit guards", async () => {
   const list = (await (await admin("/api/providers")).json()) as any[];
   const openai = list.find((p) => p.slug === "fakeopenai");

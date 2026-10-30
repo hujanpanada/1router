@@ -150,6 +150,11 @@ test("thinking can be explicitly disabled separately from image support", () => 
     ["enabled-model", true, true, ["low", "high"]],
     ["unset-model", null, null, null],
   ]);
+  // Reasoning set while thinking is merely unset must not be discarded.
+  const unsetReasoning = db.updateProvider(p.id, {
+    modelMeta: [{ modelId: "unset-model", imageInput: null, thinking: null, reasoning: { levels: ["medium"], defaultLevel: "medium" } }],
+  });
+  assert.deepEqual(unsetReasoning.models.find((m) => m.modelId === "unset-model")?.reasoning?.levels, ["medium"]);
   assert.equal(db.resolveModel("thinking/enabled-model")?.thinking, true);
   assert.equal(db.resolveModel("thinking/disabled-model")?.thinking, false);
   assert.equal(db.resolveModel("thinking/unset-model")?.thinking, null);

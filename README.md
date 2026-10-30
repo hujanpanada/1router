@@ -77,10 +77,11 @@ A *provider* is where requests actually go. For each one you enter:
 
 After models are added, each gets capability controls: **Images** is never
 assumed — 1Router blocks image input unless you explicitly enable it for
-that model. **Thinking** is an explicit on/off toggle too: when it is off
-(or not set), reasoning fields are stripped and Recent Requests shows
-`none`; when on, tick the levels to expose (`minimal`–`max`) and pick a
-default. 1Router does not match providers or
+that model. **Thinking** can be explicitly disabled per model: when off,
+reasoning fields are stripped and Recent Requests shows `none`. When on or
+not set, 1Router leaves harness/provider thinking behavior untouched, so
+existing Pi (`models.json`) settings keep working. When on, tick the levels
+to expose (`minimal`–`max`) and pick a default. 1Router does not match providers or
 model names to built-in profiles. Use **Try a thinking level** in How to
 Use to test whether a provider accepts a level before enabling it.
 

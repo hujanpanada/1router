@@ -68,9 +68,10 @@ Key semantics:
   so the final chunk carries usage.
 - Multimodal: image input is **blocked unless a model is explicitly
   marked image-capable** — unknown means blocked. Thinking is likewise
-  opt-in: anything except explicit `thinking=true` strips reasoning fields
-  and records effort `none`. Levels/defaults are manual; users can probe a
-  level via `/api/test-request`.
+  governed: `thinking=false` strips reasoning fields and records effort
+  `none`; `thinking=true` or unset passes harness effort through and records
+  the actual value. Levels/defaults are manual; users can probe a level
+  via `/api/test-request`.
 - Proxy robustness: client disconnects abort the upstream request.
   Request/response size caps are enforced (413 for inbound, observation
   caps where service guarantees matter, e.g. `fetch-models`). SSE parsing

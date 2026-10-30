@@ -98,7 +98,7 @@ const modelIdOf = (m) => typeof m === "string" ? m : m.modelId ?? m.id;
 function metaFromProvider(p, modelId) {
   const m = (p?.models ?? []).find((x) => modelIdOf(x) === modelId);
   if (!m || typeof m === "string") return { modelId, imageInput: draftModelMeta.get(modelId)?.imageInput ?? null, thinking: draftModelMeta.get(modelId)?.thinking ?? null, reasoning: draftModelMeta.get(modelId)?.reasoning ?? null, defaultEffort: "provider" };
-  return { modelId, imageInput: m.imageInput ?? null, thinking: m.thinking ?? null, reasoning: m.thinking === true ? m.reasoning ?? null : null, defaultEffort: m.thinking === true ? m.defaultEffort ?? m.reasoning?.defaultLevel ?? "provider" : "provider" };
+  return { modelId, imageInput: m.imageInput ?? null, thinking: m.thinking ?? null, reasoning: m.thinking === false ? null : m.reasoning ?? null, defaultEffort: m.thinking === false ? "provider" : m.defaultEffort ?? m.reasoning?.defaultLevel ?? "provider" };
 }
 function renderModelMetaEditor() {
   const host = $("p-model-meta");
@@ -109,7 +109,7 @@ function renderModelMetaEditor() {
   host.innerHTML = models.map((modelId) => {
     const meta = draftModelMeta.get(modelId) ?? metaFromProvider(provider, modelId);
     const levels = new Set(meta.reasoning?.levels ?? []);
-    const thinkingOn = meta.thinking === true;
+    const thinkingOn = meta.thinking !== false;
     return `<div class="model-meta-item ${thinkingOn ? "" : "thinking-off"}" data-model-meta="${esc(modelId)}">
       <div class="model-meta-head"><code>${esc(modelId)}</code><span class="meta-source">Thinking: ${thinkingOn ? "Allowed" : "None"} · Reasoning: ${thinkingOn && meta.reasoning?.levels?.length ? "Set manually" : "Not set"} · Default: ${esc(thinkingOn && meta.defaultEffort !== "provider" ? meta.defaultEffort : "Provider default")}</span></div>
       <div class="model-meta-controls">
@@ -153,7 +153,7 @@ function renderProviders() {
     const modelRows = p.models.length ? p.models.map((m) => {
       const id = modelIdOf(m);
       const meta = metaFromProvider(p, id);
-      const levels = meta.thinking === true ? meta.reasoning?.levels?.length ? meta.reasoning.levels.join(", ") : "allowed, levels not set" : "none";
+      const levels = meta.thinking === false ? "none" : meta.reasoning?.levels?.length ? meta.reasoning.levels.join(", ") : "harness/provider";
       return `<div class="provider-model-row"><span class="provider-model-name">${esc(id)}</span><span class="provider-model-cap"><span class="${meta.imageInput ? "cap-on" : "cap-off"}">Images ${meta.imageInput ? "✓" : "—"}</span> · Thinking: ${esc(levels)}</span></div>`;
     }).join("") : '<span class="muted">No models yet</span>';
     return `<tr>
@@ -297,7 +297,7 @@ function renderGuide() {
         const id = modelIdOf(m);
         const meta = metaFromProvider(pr, id);
         const entry = { id: `${pr.slug}/${id}`, input: meta.imageInput ? ["text", "image"] : ["text"] };
-        if (meta.thinking === true && meta.reasoning?.levels?.length) {
+        if (meta.thinking !== false && meta.reasoning?.levels?.length) {
           entry.reasoning = true;
           const supported = new Set(meta.reasoning.levels);
           entry.thinkingLevelMap = Object.fromEntries(["off", ...REASONING_LEVELS].map((level) => [level, level === "off" ? null : supported.has(level) ? level : null]));

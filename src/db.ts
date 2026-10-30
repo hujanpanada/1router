@@ -134,7 +134,7 @@ function rowsToModelMeta(rows: any[]): ModelMeta[] {
       modelId: r.model_id,
       imageInput: r.image_input === null || r.image_input === undefined ? null : !!r.image_input,
       thinking: r.thinking === null || r.thinking === undefined ? null : !!r.thinking,
-      reasoning: r.thinking === 1 ? reasoning : null,
+      reasoning: r.thinking === 0 ? null : reasoning,
     };
   });
 }
@@ -159,7 +159,7 @@ function normalizeModelInputs(models: any[] | undefined): { models: string[]; mo
     if (m && typeof m === "object" && typeof m.id === "string") {
       metas.push({ modelId: m.id.trim(), imageInput: m.imageInput === true ? true : m.imageInput === false ? false : null,
         thinking: m.thinking === true ? true : m.thinking === false ? false : null,
-        reasoning: m.thinking === true && m.reasoning ? validateReasoning({ levels: m.reasoning.levels, defaultLevel: m.defaultEffort ?? m.reasoning.defaultLevel, source: "manual" }, m.id) : null });
+        reasoning: m.thinking !== false && m.reasoning ? validateReasoning({ levels: m.reasoning.levels, defaultLevel: m.defaultEffort ?? m.reasoning.defaultLevel, source: "manual" }, m.id) : null });
     }
   }
   return { models: ids, modelMeta: metas };
@@ -175,7 +175,7 @@ function validateModelMeta(models: string[], meta: ModelMeta[] | undefined, prov
       modelId: m.modelId,
       imageInput: m.imageInput === true ? true : m.imageInput === false ? false : null,
       thinking: m.thinking === true ? true : m.thinking === false ? false : null,
-      reasoning: m.thinking === true ? validateReasoning(m.reasoning as unknown, `${providerLabel}/${m.modelId}`) : null,
+      reasoning: m.thinking === false ? null : validateReasoning(m.reasoning as unknown, `${providerLabel}/${m.modelId}`),
     };
     if (known.has(m.modelId)) out.set(m.modelId, entry);
   }
@@ -329,7 +329,7 @@ export function createDb(path: string, opts: { now?: () => number } = {}): Db {
         const ins = sqlite.prepare("INSERT INTO provider_models (provider_id, model_id, image_input, thinking, reasoning) VALUES (?, ?, ?, ?, ?)");
         for (const mid of models) {
           const m = meta.get(mid);
-          ins.run(id, mid, m?.imageInput == null ? null : m.imageInput ? 1 : 0, m?.thinking == null ? null : m.thinking ? 1 : 0, m?.thinking === true && m?.reasoning ? JSON.stringify(m.reasoning) : null);
+          ins.run(id, mid, m?.imageInput == null ? null : m.imageInput ? 1 : 0, m?.thinking == null ? null : m.thinking ? 1 : 0, m?.thinking !== false && m?.reasoning ? JSON.stringify(m.reasoning) : null);
         }
         sqlite.exec("COMMIT");
         return api.getProvider(id)!;
@@ -350,7 +350,7 @@ export function createDb(path: string, opts: { now?: () => number } = {}): Db {
       const mergedMeta = new Map<string, ModelMeta>();
       for (const mid of models) {
         const prev = existing.get(mid);
-        mergedMeta.set(mid, { modelId: mid, imageInput: prev?.imageInput ?? null, thinking: prev?.thinking ?? null, reasoning: prev?.thinking === true ? prev.reasoning ?? null : null });
+        mergedMeta.set(mid, { modelId: mid, imageInput: prev?.imageInput ?? null, thinking: prev?.thinking ?? null, reasoning: prev?.thinking === false ? null : prev?.reasoning ?? null });
       }
       const objectMeta = normalizedPatch?.modelMeta ?? [];
       if (objectMeta.length || patch.modelMeta) {
@@ -367,7 +367,7 @@ export function createDb(path: string, opts: { now?: () => number } = {}): Db {
         const ins = sqlite.prepare("INSERT INTO provider_models (provider_id, model_id, image_input, thinking, reasoning) VALUES (?, ?, ?, ?, ?)");
         for (const mid of models) {
           const m = mergedMeta.get(mid);
-          ins.run(id, mid, m?.imageInput == null ? null : m.imageInput ? 1 : 0, m?.thinking == null ? null : m.thinking ? 1 : 0, m?.thinking === true && m?.reasoning ? JSON.stringify(m.reasoning) : null);
+          ins.run(id, mid, m?.imageInput == null ? null : m.imageInput ? 1 : 0, m?.thinking == null ? null : m.thinking ? 1 : 0, m?.thinking !== false && m?.reasoning ? JSON.stringify(m.reasoning) : null);
         }
         sqlite.exec("COMMIT");
         return api.getProvider(id)!;
