@@ -50,6 +50,7 @@ frameworks or build tooling for the frontend.
 | `src/cli.ts` | Optional terminal key management (`key:create/list/revoke`). |
 | `public/login.html` | Standalone login page (inline CSS/JS). |
 | `public/index.html` / `app.js` / `style.css` | Dashboard SPA (tabs: Dashboard, Providers, API Keys, How to Use, Settings). Auth via HttpOnly session cookie; it must never call `/v1/*` directly from the browser — use `/api/test-request` for tests. |
+| `images/` | README/docs screenshots only (e.g. dashboard screenshot embedded in `README.md`). Not application code, not served by the server. |
 
 Supported API types (exactly these three): `openai-completions`
 (`POST /v1/chat/completions`), `openai-responses` (`POST /v1/responses`),
