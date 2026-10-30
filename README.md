@@ -167,7 +167,7 @@ Layout: `src/usage.ts` (per-API usage normalization + streaming parsers),
 `src/auth.ts` (password/session helpers), `src/db.ts` (SQLite: settings,
 sessions, providers, keys, usage, stats), `src/server.ts` (proxy + admin API),
 `src/cli.ts` (optional key management from the terminal),
-`public/` (vanilla HTML/CSS/JS dashboard). See `PLAN.md` for scope and
+`public/` (vanilla HTML/CSS/JS dashboard). See `docs/PLAN.md` for scope and
 `AGENTS.md` if you're an AI assistant working on this repo.
 
 ## Credits
