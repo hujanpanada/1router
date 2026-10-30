@@ -1,6 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { createHash, randomBytes } from "node:crypto";
 import { API_TYPES, type ApiType } from "./usage.js";
+import { validateReasoning, type ReasoningProfile } from "./reasoning.js";
 
 export interface UsageEventInput {
   ts: number;
@@ -16,6 +17,7 @@ export interface UsageEventInput {
   streaming: boolean;
   latencyMs: number;
   usageMissing: boolean;
+  effort?: string | null;
 }
 
 export interface UsageEvent extends Omit<UsageEventInput, "streaming" | "usageMissing"> {
@@ -39,6 +41,13 @@ export type StatsGroupBy = "key" | "provider" | "model";
 
 export interface ClientKey { id: number; name: string; createdAt: number; lastUsedAt: number | null; revokedAt: number | null }
 
+export interface ModelMeta {
+  modelId: string;
+  /** true=images allowed through the proxy, false=blocked, null=unknown (blocked). */
+  imageInput: boolean | null;
+  reasoning: ReasoningProfile | null;
+}
+
 export interface ProviderInput {
   slug: string;
   name: string;
@@ -46,9 +55,14 @@ export interface ProviderInput {
   api: ApiType;
   apiKey: string;
   models: string[];
+  modelMeta?: ModelMeta[];
 }
 
-export interface Provider extends ProviderInput { id: number; createdAt: number }
+export interface Provider extends Omit<ProviderInput, "models" | "modelMeta"> {
+  id: number;
+  createdAt: number;
+  models: ModelMeta[];
+}
 
 export interface ResolvedModel {
   provider: string;
@@ -57,22 +71,23 @@ export interface ResolvedModel {
   api: ApiType;
   baseUrl: string;
   apiKey: string;
+  imageInput: boolean;
 }
 
+export interface DbPragmas { user_version: number; journal_mode: string; busy_timeout: number; foreign_keys: number }
+
 export interface Db {
-  // settings (login password hash lives here)
   getSetting(key: string): string | null;
   setSetting(key: string, value: string): void;
-  // dashboard sessions
   createSession(ttlMs: number): { token: string; expiresAt: number };
   findSession(token: string): { expiresAt: number } | null;
   deleteSession(token: string): void;
-  // client keys (proxy auth)
+  deleteAllSessions(): void;
+  pruneExpiredSessions(): number;
   createKey(name: string): { id: number; name: string; key: string };
   findKeyBySecret(secret: string): ClientKey | null;
   listKeys(): ClientKey[];
   revokeKey(id: number): void;
-  // upstream providers (managed from the web UI)
   createProvider(p: ProviderInput): Provider;
   updateProvider(id: number, patch: Partial<ProviderInput>): Provider;
   deleteProvider(id: number): void;
@@ -80,12 +95,13 @@ export interface Db {
   getProvider(id: number): Provider | null;
   resolveModel(fullId: string): ResolvedModel | null;
   listModels(): { id: string; provider: string; modelId: string; api: ApiType }[];
-  // usage
   insertEvent(e: UsageEventInput): number;
   stats(q: { period: StatsPeriod; groupBy: StatsGroupBy }): StatsRow[];
   recentEvents(limit: number): UsageEvent[];
-  /** Consistent standalone copy of the whole DB (sessions cleared), for /api/export. */
   serialize(): Uint8Array;
+  schemaVersion(): number;
+  pragmas(): DbPragmas;
+  now?: () => number;
   close(): void;
 }
 
@@ -101,19 +117,69 @@ const PERIOD_EXPR: Record<StatsPeriod, string> = {
 };
 
 const SLUG_RE = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
+export const SCHEMA_VERSION = 1;
+const LAST_USED_TOUCH_MS = 60_000;
 
-function validateProvider(p: ProviderInput): ProviderInput {
-  if (!SLUG_RE.test(p.slug)) throw new Error(`Invalid provider slug "${p.slug}" (letters, numbers, - and _ only)`);
-  if (!(API_TYPES as readonly string[]).includes(p.api)) throw new Error(`Unsupported api "${String(p.api)}". Supported: ${API_TYPES.join(", ")}`);
-  let url: URL;
-  try { url = new URL(p.baseUrl); } catch { throw new Error(`Invalid baseUrl: ${p.baseUrl}`); }
-  if (!["http:", "https:"].includes(url.protocol)) throw new Error("baseUrl must start with http:// or https://");
-  const models = [...new Set((p.models ?? []).map((m) => m.trim()).filter(Boolean))];
-  return { ...p, baseUrl: p.baseUrl.replace(/\/+$/, ""), name: p.name.trim() || p.slug, models };
+function rowsToModelMeta(rows: any[]): ModelMeta[] {
+  return rows.map((r) => {
+    let reasoning: ModelMeta["reasoning"] = null;
+    if (r.reasoning) {
+      try { reasoning = validateReasoning(JSON.parse(r.reasoning), r.model_id); } catch { reasoning = null; }
+    }
+    if (reasoning) reasoning = { levels: reasoning.levels, defaultLevel: reasoning.defaultLevel ?? "provider", source: reasoning.source ?? "manual" };
+    return {
+      modelId: r.model_id,
+      imageInput: r.image_input === null || r.image_input === undefined ? null : !!r.image_input,
+      reasoning,
+    };
+  });
 }
 
-export function createDb(path: string): Db {
+function validateModels(models: string[] | undefined): string[] {
+  if (!Array.isArray(models)) throw new Error("models must be an array");
+  const out: string[] = [];
+  for (const m of models) {
+    if (typeof m !== "string" && (!m || typeof m !== "object" || typeof (m as any).id !== "string")) {
+      throw new Error("Each model must be a string ID or an object with an id");
+    }
+    const id = (typeof m === "string" ? m : (m as any).id).trim();
+    if (id && !out.includes(id)) out.push(id);
+  }
+  return out;
+}
+
+function normalizeModelInputs(models: any[] | undefined): { models: string[]; modelMeta: ModelMeta[] } {
+  const metas: ModelMeta[] = [];
+  const ids = validateModels(models as any);
+  for (const m of models ?? []) {
+    if (m && typeof m === "object" && typeof m.id === "string") {
+      metas.push({ modelId: m.id.trim(), imageInput: m.imageInput === true ? true : m.imageInput === false ? false : null,
+        reasoning: m.reasoning ? validateReasoning({ levels: m.reasoning.levels, defaultLevel: m.defaultEffort ?? m.reasoning.defaultLevel, source: "manual" }, m.id) : null });
+    }
+  }
+  return { models: ids, modelMeta: metas };
+}
+
+function validateModelMeta(models: string[], meta: ModelMeta[] | undefined, providerLabel: string): Map<string, ModelMeta> {
+  const out = new Map<string, ModelMeta>();
+  const known = new Set(models);
+  for (const m of meta ?? []) {
+    if (!m || typeof m.modelId !== "string") continue;
+    // meta rows for models that aren't enabled are ignored (not an error)
+    const entry: ModelMeta = {
+      modelId: m.modelId,
+      imageInput: m.imageInput === true ? true : m.imageInput === false ? false : null,
+      reasoning: validateReasoning(m.reasoning as unknown, `${providerLabel}/${m.modelId}`),
+    };
+    if (known.has(m.modelId)) out.set(m.modelId, entry);
+  }
+  return out;
+}
+
+export function createDb(path: string, opts: { now?: () => number } = {}): Db {
+  const now = opts.now ?? (() => Date.now());
   const sqlite = new DatabaseSync(path);
+  sqlite.exec("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON;");
   sqlite.exec(`
     CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS sessions (
@@ -131,7 +197,10 @@ export function createDb(path: string): Db {
     );
     CREATE TABLE IF NOT EXISTS provider_models (
       provider_id INTEGER NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
-      model_id TEXT NOT NULL, PRIMARY KEY (provider_id, model_id)
+      model_id TEXT NOT NULL,
+      image_input INTEGER,
+      reasoning TEXT,
+      PRIMARY KEY (provider_id, model_id)
     );
     CREATE TABLE IF NOT EXISTS usage_events (
       id INTEGER PRIMARY KEY, ts INTEGER NOT NULL,
@@ -140,33 +209,44 @@ export function createDb(path: string): Db {
       input INTEGER NOT NULL, output INTEGER NOT NULL,
       cache_read INTEGER NOT NULL, cache_write INTEGER NOT NULL,
       http_status INTEGER NOT NULL, streaming INTEGER NOT NULL,
-      latency_ms INTEGER NOT NULL, usage_missing INTEGER NOT NULL
+      latency_ms INTEGER NOT NULL, usage_missing INTEGER NOT NULL,
+      effort TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_events_ts ON usage_events(ts);
     CREATE INDEX IF NOT EXISTS idx_events_key_ts ON usage_events(client_key_id, ts);
     CREATE INDEX IF NOT EXISTS idx_events_provider_ts ON usage_events(provider, ts);
   `);
-  // Migrate pre-v2 databases: cost tracking was removed; keep the token history.
+  // In-place migrations (additive, never drop token history).
   const cols = (sqlite.prepare("PRAGMA table_info(usage_events)").all() as any[]).map((c) => c.name);
   if (cols.includes("cost_usd")) sqlite.exec("ALTER TABLE usage_events DROP COLUMN cost_usd");
+  if (!cols.includes("effort")) sqlite.exec("ALTER TABLE usage_events ADD COLUMN effort TEXT");
   const keyCols = (sqlite.prepare("PRAGMA table_info(client_keys)").all() as any[]).map((c) => c.name);
   if (keyCols.length && !keyCols.includes("last_used_at")) sqlite.exec("ALTER TABLE client_keys ADD COLUMN last_used_at INTEGER");
+  const modelCols = (sqlite.prepare("PRAGMA table_info(provider_models)").all() as any[]).map((c) => c.name);
+  if (modelCols.length && !modelCols.includes("image_input")) sqlite.exec("ALTER TABLE provider_models ADD COLUMN image_input INTEGER");
+  if (modelCols.length && !modelCols.includes("reasoning")) sqlite.exec("ALTER TABLE provider_models ADD COLUMN reasoning TEXT");
+
+  // Stamp the schema version once. Existing v0 databases graduate to v1
+  // only when all v1 columns exist, which the migrations above guarantee.
+  const userVersion = Number((sqlite.prepare("PRAGMA user_version").get() as any)?.user_version ?? 0);
+  if (userVersion < SCHEMA_VERSION) sqlite.exec(`PRAGMA user_version=${SCHEMA_VERSION};`);
 
   const toKey = (r: any): ClientKey => ({
     id: r.id, name: r.name, createdAt: r.created_at, lastUsedAt: r.last_used_at ?? null, revokedAt: r.revoked_at ?? null,
   });
-  const toProvider = (r: any): Provider => ({
+  const modelsOf = (pid: number): ModelMeta[] =>
+    rowsToModelMeta(sqlite.prepare("SELECT model_id, image_input, reasoning FROM provider_models WHERE provider_id = ? ORDER BY model_id").all(pid) as any[]);
+  const providerFromRow = (r: any): Provider => ({
     id: r.id, slug: r.slug, name: r.name, baseUrl: r.base_url, api: r.api, apiKey: r.api_key,
-    createdAt: r.created_at,
-    models: (sqlite.prepare("SELECT model_id FROM provider_models WHERE provider_id = ? ORDER BY model_id").all(r.id) as any[]).map((m) => m.model_id),
+    createdAt: r.created_at, models: modelsOf(r.id),
   });
-  const replaceModels = (providerId: number, models: string[]) => {
-    sqlite.prepare("DELETE FROM provider_models WHERE provider_id = ?").run(providerId);
-    const ins = sqlite.prepare("INSERT INTO provider_models (provider_id, model_id) VALUES (?, ?)");
-    for (const m of models) ins.run(providerId, m);
-  };
+  const getProviderRowBySlug = (slug: string) => sqlite.prepare("SELECT * FROM providers WHERE slug = ?").get(slug) as any;
+  const getProviderRowById = (id: number) => sqlite.prepare("SELECT * FROM providers WHERE id = ?").get(id) as any;
 
-  return {
+
+  const api: Db = {
+    now,
+
     getSetting(key) {
       const r = sqlite.prepare("SELECT value FROM settings WHERE key = ?").get(key) as any;
       return r ? r.value : null;
@@ -177,88 +257,139 @@ export function createDb(path: string): Db {
 
     createSession(ttlMs) {
       const token = randomBytes(32).toString("base64url");
-      const expiresAt = Date.now() + ttlMs;
-      sqlite.prepare("INSERT INTO sessions (token_hash, created_at, expires_at) VALUES (?, ?, ?)").run(hash(token), Date.now(), expiresAt);
+      const expiresAt = now() + ttlMs;
+      sqlite.prepare("INSERT INTO sessions (token_hash, created_at, expires_at) VALUES (?, ?, ?)").run(hash(token), now(), expiresAt);
       return { token, expiresAt };
     },
     findSession(token) {
       if (!token) return null;
       const r = sqlite.prepare("SELECT expires_at FROM sessions WHERE token_hash = ?").get(hash(token)) as any;
-      if (!r || r.expires_at <= Date.now()) return null;
+      if (!r || r.expires_at <= now()) return null;
       return { expiresAt: r.expires_at };
     },
     deleteSession(token) {
       if (token) sqlite.prepare("DELETE FROM sessions WHERE token_hash = ?").run(hash(token));
     },
+    deleteAllSessions() {
+      sqlite.exec("DELETE FROM sessions");
+    },
+    pruneExpiredSessions() {
+      const info = sqlite.prepare("DELETE FROM sessions WHERE expires_at <= ?").run(now());
+      return Number(info.changes);
+    },
 
     createKey(name) {
       const key = "sk-1r-" + randomBytes(24).toString("base64url");
-      const info = sqlite.prepare("INSERT INTO client_keys (name, key_hash, created_at) VALUES (?, ?, ?)").run(name, hash(key), Date.now());
+      const info = sqlite.prepare("INSERT INTO client_keys (name, key_hash, created_at) VALUES (?, ?, ?)").run(name, hash(key), now());
       return { id: Number(info.lastInsertRowid), name, key };
     },
     findKeyBySecret(secret) {
       if (!secret) return null;
       const r = sqlite.prepare("SELECT * FROM client_keys WHERE key_hash = ? AND revoked_at IS NULL").get(hash(secret)) as any;
       if (!r) return null;
-      sqlite.prepare("UPDATE client_keys SET last_used_at = ? WHERE id = ?").run(Date.now(), r.id);
-      return toKey({ ...r, last_used_at: Date.now() });
+      const ts = now();
+      // Throttle last-used writes: at most once per minute per key.
+      if (r.last_used_at === null || ts - r.last_used_at >= LAST_USED_TOUCH_MS) {
+        sqlite.prepare("UPDATE client_keys SET last_used_at = ? WHERE id = ?").run(ts, r.id);
+        return toKey({ ...r, last_used_at: ts });
+      }
+      return toKey(r);
     },
     listKeys() {
       return (sqlite.prepare("SELECT id, name, created_at, last_used_at, revoked_at FROM client_keys ORDER BY id").all() as any[]).map(toKey);
     },
     revokeKey(id) {
-      sqlite.prepare("UPDATE client_keys SET revoked_at = ? WHERE id = ?").run(Date.now(), id);
+      sqlite.prepare("UPDATE client_keys SET revoked_at = ? WHERE id = ?").run(now(), id);
     },
 
     createProvider(input) {
-      const p = validateProvider(input);
-      if (sqlite.prepare("SELECT id FROM providers WHERE slug = ?").get(p.slug)) {
-        throw new Error(`Provider slug "${p.slug}" already exists`);
-      }
-      const info = sqlite.prepare("INSERT INTO providers (slug, name, base_url, api, api_key, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-        .run(p.slug, p.name, p.baseUrl, p.api, p.apiKey ?? "", Date.now());
-      const id = Number(info.lastInsertRowid);
-      replaceModels(id, p.models);
-      return this.getProvider(id)!;
+      const slug = input.slug.trim();
+      if (!SLUG_RE.test(slug)) throw new Error(`Invalid provider slug "${input.slug}" (letters, numbers, - and _ only)`);
+      if (!(API_TYPES as readonly string[]).includes(input.api)) throw new Error(`Unsupported api "${String(input.api)}". Supported: ${API_TYPES.join(", ")}`);
+      let url: URL;
+      try { url = new URL(input.baseUrl); } catch { throw new Error(`Invalid baseUrl: ${input.baseUrl}`); }
+      if (!["http:", "https:"].includes(url.protocol)) throw new Error("baseUrl must start with http:// or https://");
+      const normalized = normalizeModelInputs(input.models as any);
+      const models = normalized.models;
+      const meta = validateModelMeta(models, [...normalized.modelMeta, ...(input.modelMeta ?? [])], slug);
+      sqlite.exec("BEGIN");
+      try {
+        if (getProviderRowBySlug(slug)) throw new Error(`Provider slug "${slug}" already exists`);
+        const info = sqlite.prepare("INSERT INTO providers (slug, name, base_url, api, api_key, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+          .run(slug, input.name.trim() || slug, input.baseUrl.replace(/\/+$/, ""), input.api, input.apiKey ?? "", now());
+        const id = Number(info.lastInsertRowid);
+        const ins = sqlite.prepare("INSERT INTO provider_models (provider_id, model_id, image_input, reasoning) VALUES (?, ?, ?, ?)");
+        for (const mid of models) {
+          const m = meta.get(mid);
+          ins.run(id, mid, m?.imageInput === null || m?.imageInput === undefined ? null : m.imageInput ? 1 : 0, m?.reasoning ? JSON.stringify(m.reasoning) : null);
+        }
+        sqlite.exec("COMMIT");
+        return api.getProvider(id)!;
+      } catch (e) { sqlite.exec("ROLLBACK"); throw e; }
     },
     updateProvider(id, patch) {
-      const current = this.getProvider(id);
+      const current = api.getProvider(id);
       if (!current) throw new Error(`Provider ${id} not found`);
-      const merged = validateProvider({
-        slug: patch.slug ?? current.slug, name: patch.name ?? current.name,
-        baseUrl: patch.baseUrl ?? current.baseUrl, api: patch.api ?? current.api,
-        // blank/omitted apiKey on edit = keep the stored one
-        apiKey: patch.apiKey ? patch.apiKey : current.apiKey,
-        models: patch.models ?? current.models,
-      });
-      const clash = sqlite.prepare("SELECT id FROM providers WHERE slug = ? AND id != ?").get(merged.slug, id);
-      if (clash) throw new Error(`Provider slug "${merged.slug}" already exists`);
-      sqlite.prepare("UPDATE providers SET slug = ?, name = ?, base_url = ?, api = ?, api_key = ? WHERE id = ?")
-        .run(merged.slug, merged.name, merged.baseUrl, merged.api, merged.apiKey, id);
-      if (patch.models) replaceModels(id, merged.models);
-      return this.getProvider(id)!;
+      const slug = (patch.slug ?? current.slug).trim();
+      if (!SLUG_RE.test(slug)) throw new Error(`Invalid provider slug "${slug}" (letters, numbers, - and _ only)`);
+      const apiType = patch.api ?? current.api;
+      if (!(API_TYPES as readonly string[]).includes(apiType)) throw new Error(`Unsupported api "${String(apiType)}". Supported: ${API_TYPES.join(", ")}`);
+      const baseUrl = (patch.baseUrl ?? current.baseUrl).replace(/\/+$/, "");
+      try { new URL(baseUrl); } catch { throw new Error(`Invalid baseUrl: ${baseUrl}`); }
+      const normalizedPatch = patch.models ? normalizeModelInputs(patch.models as any) : null;
+      const models = normalizedPatch?.models ?? current.models.map((m) => m.modelId);
+      const existing = new Map(current.models.map((m) => [m.modelId, m]));
+      const mergedMeta = new Map<string, ModelMeta>();
+      for (const mid of models) {
+        const prev = existing.get(mid);
+        mergedMeta.set(mid, { modelId: mid, imageInput: prev?.imageInput ?? null, reasoning: prev?.reasoning ?? null });
+      }
+      const objectMeta = normalizedPatch?.modelMeta ?? [];
+      if (objectMeta.length || patch.modelMeta) {
+        const meta = validateModelMeta(models, [...objectMeta, ...(patch.modelMeta ?? [])], slug);
+        for (const [mid, m] of meta) mergedMeta.set(mid, m);
+      }
+      sqlite.exec("BEGIN");
+      try {
+        const clash = sqlite.prepare("SELECT id FROM providers WHERE slug = ? AND id != ?").get(slug, id);
+        if (clash) throw new Error(`Provider slug "${slug}" already exists`);
+        sqlite.prepare("UPDATE providers SET slug = ?, name = ?, base_url = ?, api = ?, api_key = ? WHERE id = ?")
+          .run(slug, (patch.name ?? current.name).trim() || slug, baseUrl, apiType, patch.apiKey ? patch.apiKey : current.apiKey, id);
+        sqlite.prepare("DELETE FROM provider_models WHERE provider_id = ?").run(id);
+        const ins = sqlite.prepare("INSERT INTO provider_models (provider_id, model_id, image_input, reasoning) VALUES (?, ?, ?, ?)");
+        for (const mid of models) {
+          const m = mergedMeta.get(mid);
+          ins.run(id, mid, m?.imageInput === null || m?.imageInput === undefined ? null : m.imageInput ? 1 : 0, m?.reasoning ? JSON.stringify(m.reasoning) : null);
+        }
+        sqlite.exec("COMMIT");
+        return api.getProvider(id)!;
+      } catch (e) { sqlite.exec("ROLLBACK"); throw e; }
     },
     deleteProvider(id) {
-      sqlite.prepare("DELETE FROM provider_models WHERE provider_id = ?").run(id);
-      sqlite.prepare("DELETE FROM providers WHERE id = ?").run(id);
+      sqlite.exec("BEGIN");
+      try {
+        sqlite.prepare("DELETE FROM provider_models WHERE provider_id = ?").run(id);
+        sqlite.prepare("DELETE FROM providers WHERE id = ?").run(id);
+        sqlite.exec("COMMIT");
+      } catch (e) { sqlite.exec("ROLLBACK"); throw e; }
     },
     listProviders() {
-      return (sqlite.prepare("SELECT * FROM providers ORDER BY id").all() as any[]).map(toProvider);
+      return (sqlite.prepare("SELECT * FROM providers ORDER BY id").all() as any[]).map(providerFromRow);
     },
     getProvider(id) {
-      const r = sqlite.prepare("SELECT * FROM providers WHERE id = ?").get(id) as any;
-      return r ? toProvider(r) : null;
+      const r = getProviderRowById(id);
+      return r ? providerFromRow(r) : null;
     },
     resolveModel(fullId) {
       const slash = fullId.indexOf("/");
       if (slash <= 0) return null;
       const slug = fullId.slice(0, slash);
       const modelId = fullId.slice(slash + 1);
-      const r = sqlite.prepare("SELECT * FROM providers WHERE slug = ?").get(slug) as any;
+      const r = getProviderRowBySlug(slug);
       if (!r) return null;
-      const exists = sqlite.prepare("SELECT 1 FROM provider_models WHERE provider_id = ? AND model_id = ?").get(r.id, modelId);
-      if (!exists) return null;
-      return { provider: r.slug, providerName: r.name, modelId, api: r.api, baseUrl: r.base_url, apiKey: r.api_key };
+      const row = sqlite.prepare("SELECT image_input FROM provider_models WHERE provider_id = ? AND model_id = ?").get(r.id, modelId) as any;
+      if (!row) return null;
+      return { provider: r.slug, providerName: r.name, modelId, api: r.api, baseUrl: r.base_url, apiKey: r.api_key, imageInput: row.image_input === 1 };
     },
     listModels() {
       const rows = sqlite.prepare(`
@@ -270,10 +401,10 @@ export function createDb(path: string): Db {
     insertEvent(e) {
       const info = sqlite.prepare(`
         INSERT INTO usage_events (ts, client_key_id, provider, model, api, input, output, cache_read, cache_write,
-                                  http_status, streaming, latency_ms, usage_missing)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+                                  http_status, streaming, latency_ms, usage_missing, effort)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
         .run(e.ts, e.clientKeyId, e.provider, e.model, e.api, e.input, e.output, e.cacheRead, e.cacheWrite,
-             e.httpStatus, e.streaming ? 1 : 0, e.latencyMs, e.usageMissing ? 1 : 0);
+             e.httpStatus, e.streaming ? 1 : 0, e.latencyMs, e.usageMissing ? 1 : 0, e.effort ?? null);
       return Number(info.lastInsertRowid);
     },
     stats({ period, groupBy }) {
@@ -290,8 +421,20 @@ export function createDb(path: string): Db {
       }));
     },
     serialize() {
-      sqlite.exec("DELETE FROM sessions"); // a backup must not carry live logins
-      return sqlite.serialize();
+      // Snapshot the file, clear sessions in the snapshot only. We guard the
+      // whole thing with a write transaction so a concurrent insert cannot
+      // sneak in half-way; serialize() itself is already a consistent snapshot.
+      const bytes = sqlite.serialize("main");
+      try {
+        const copy = new DatabaseSync(":memory:");
+        copy.deserialize(bytes);
+        copy.exec("DELETE FROM sessions");
+        const out = copy.serialize("main");
+        copy.close();
+        return out;
+      } catch {
+        return bytes; // fallback: live DB untouched either way
+      }
     },
     recentEvents(limit) {
       const rows = sqlite.prepare("SELECT * FROM usage_events ORDER BY id DESC LIMIT ?").all(limit) as any[];
@@ -299,8 +442,21 @@ export function createDb(path: string): Db {
         id: r.id, ts: r.ts, clientKeyId: r.client_key_id, provider: r.provider, model: r.model, api: r.api,
         input: r.input, output: r.output, cacheRead: r.cache_read, cacheWrite: r.cache_write,
         httpStatus: r.http_status, streaming: !!r.streaming, latencyMs: r.latency_ms, usageMissing: !!r.usage_missing,
+        effort: r.effort ?? null,
       }));
+    },
+    schemaVersion() {
+      return Number((sqlite.prepare("PRAGMA user_version").get() as any)?.user_version ?? 0);
+    },
+    pragmas() {
+      return {
+        user_version: this.schemaVersion(),
+        journal_mode: String((sqlite.prepare("PRAGMA journal_mode").get() as any)?.journal_mode ?? ""),
+        busy_timeout: Number((sqlite.prepare("PRAGMA busy_timeout").get() as any)?.timeout ?? (sqlite.prepare("PRAGMA busy_timeout").get() as any)?.busy_timeout ?? 0),
+        foreign_keys: Number((sqlite.prepare("PRAGMA foreign_keys").get() as any)?.foreign_keys ?? 0),
+      };
     },
     close() { sqlite.close(); },
   };
+  return api;
 }

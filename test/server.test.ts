@@ -18,6 +18,14 @@ const upstream = http.createServer((req, res) => {
       res.writeHead(200, { "content-type": "application/json" });
       return res.end(JSON.stringify({ data: [{ id: "gpt-x" }, { id: "gpt-x-mini" }] }));
     }
+    if ((body as any)?.hang) {
+      res.writeHead(200, { "content-type": "text/event-stream" });
+      res.write('data: {"choices":[{"delta":{"content":"x"}}]}\n\n');
+      const timer = setInterval(() => res.write('data: {"choices":[{"delta":{"content":"."}}]}\n\n'), 20);
+      req.on("close", () => clearInterval(timer));
+      res.on("close", () => clearInterval(timer));
+      return;
+    }
     if (body?.stream) {
       res.writeHead(200, { "content-type": "text/event-stream" });
       if (req.url?.endsWith("/messages")) {
@@ -68,10 +76,16 @@ before(async () => {
   await new Promise<void>((r) => upstream.listen(0, "127.0.0.1", r));
   const up = `http://127.0.0.1:${(upstream.address() as AddressInfo).port}/v1`;
   db = createDb(":memory:");
-  db.createProvider({ slug: "fakeopenai", name: "Fake OpenAI", baseUrl: up, api: "openai-completions", apiKey: "upstream-secret", models: ["gpt-x"] });
+  const p1 = db.createProvider({ slug: "fakeopenai", name: "Fake OpenAI", baseUrl: up, api: "openai-completions", apiKey: "upstream-secret", models: ["gpt-x"] });
+  db.updateProvider(p1.id, {
+    modelMeta: [
+      { modelId: "gpt-x", imageInput: true, reasoning: { levels: ["low", "medium", "high"], defaultLevel: "provider" } },
+    ],
+  });
   db.createProvider({ slug: "fakeresp", name: "Fake Resp", baseUrl: up, api: "openai-responses", apiKey: "upstream-secret", models: ["gpt-r"] });
-  db.createProvider({ slug: "fakeanthropic", name: "Fake Anthropic", baseUrl: up, api: "anthropic-messages", apiKey: "upstream-secret", models: ["claude-x"] });
-  app = createServer({ db });
+  const p3 = db.createProvider({ slug: "fakeanthropic", name: "Fake Anthropic", baseUrl: up, api: "anthropic-messages", apiKey: "upstream-secret", models: ["claude-x"] });
+  db.updateProvider(p3.id, { modelMeta: [{ modelId: "claude-x", imageInput: false, reasoning: null }] });
+  app = createServer({ db, proxyTimeoutMs: 2000, maxResponseBytes: 100_000, loginWindowMs: 1200, loginMaxFailures: 10 });
   await new Promise<void>((r) => app.listen(0, "127.0.0.1", r));
   base = `http://127.0.0.1:${(app.address() as AddressInfo).port}`;
 });
@@ -92,6 +106,18 @@ const admin = (path: string, init: RequestInit = {}) =>
   fetch(base + path, { ...init, headers: { cookie, ...(init.headers ?? {}) } });
 
 // ---------- login / session ----------
+test("login and proxy routes reject abusive payload sizes", async () => {
+  try {
+    const tooBig = await fetch(base + "/api/login", {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ password: "1router", padding: "x".repeat(120_000) }),
+    });
+    assert.equal(tooBig.status, 413);
+    await tooBig.text();
+  } catch (e) {
+    assert.match(String(e), /fetch failed|socket|abort/i);
+  }
+});
+
 test("dashboard requires login; default password '1router' logs in and sets session cookie", async () => {
   const home = await fetch(base + "/", { redirect: "manual" });
   assert.equal(home.status, 302);
@@ -114,10 +140,28 @@ test("change password: old stops working, new works, default flag clears", async
   const ok = await admin("/api/change-password", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ currentPassword: "1router", newPassword: "newpass123" }) });
   assert.equal(ok.status, 200);
   assert.equal((await login("1router")).status, 401);
-  assert.equal((await login("newpass123")).status, 200);
+  const fresh = await login("newpass123");
+  assert.equal(fresh.status, 200);
+  // password change must revoke other sessions (the pre-change cookie is dead)
+  assert.equal((await fetch(base + "/api/me", { headers: { cookie } })).status, 401);
+  cookie = (fresh.headers.get("set-cookie") ?? "").split(";")[0];
   const me = (await (await admin("/api/me")).json()) as any;
   assert.equal(me.passwordIsDefault, false);
-  // restore for later tests using the existing cookie (session survives password change)
+});
+
+test("dashboard responses carry security headers", async () => {
+  const home = await fetch(base + "/", { headers: { cookie } });
+  assert.match(home.headers.get("content-security-policy") ?? "", /default-src 'self'/);
+  assert.equal(home.headers.get("x-content-type-options"), "nosniff");
+  assert.equal(home.headers.get("x-frame-options"), "DENY");
+  assert.equal(home.headers.get("cache-control"), "no-cache");
+});
+
+test("failed logins are rate limited", async () => {
+  let last = 0;
+  for (let i = 0; i < 11; i++) last = (await login("definitely-wrong" + i)).status;
+  assert.equal(last, 429);
+  await new Promise((r) => setTimeout(r, 1300));
 });
 
 test("client keys cannot access admin APIs (login is separate)", async () => {
@@ -167,8 +211,32 @@ test("fetch-models proxies upstream /models with the given credentials", async (
   });
   assert.equal(res.status, 200);
   const json = (await res.json()) as any;
-  assert.deepEqual(json.models, ["gpt-x", "gpt-x-mini"]);
+  assert.deepEqual(json.models.map((m: any) => m.modelId ?? m.id ?? m), ["gpt-x", "gpt-x-mini"]);
+  assert.equal(json.models[0].imageInput, null);
+  assert.equal(json.models[0].reasoning, null);
   assert.equal(lastUpstream.headers.authorization, "Bearer upstream-secret");
+});
+
+test("providers API round-trips model guards in the update request", async () => {
+  const created = (await (await admin("/api/providers", {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ slug: "guardapi", name: "Guard API", baseUrl: lastUpstreamUrl(), api: "openai-completions", apiKey: "k", models: [{ id: "gpt-x", imageInput: true, reasoning: { levels: ["low", "high"] }, defaultEffort: "provider" }] }),
+  })).json()) as any;
+  assert.equal(created.models[0].imageInput, true);
+  assert.deepEqual(created.models[0].reasoning.levels, ["low", "high"]);
+  await admin(`/api/providers/${created.id}`, { method: "DELETE" });
+});
+
+test("provider API exposes only explicit guards and curated defaults never override them", async () => {
+  const list = (await (await admin("/api/providers")).json()) as any[];
+  const openai = list.find((p) => p.slug === "fakeopenai");
+  const meta = openai.models.find((m: any) => (m.modelId ?? m.id) === "gpt-x");
+  assert.equal(meta.imageInput, true);
+  assert.deepEqual(meta.reasoning.levels, ["low", "medium", "high"]);
+  const anthropic = list.find((p) => p.slug === "fakeanthropic");
+  const claude = anthropic.models.find((m: any) => (m.modelId ?? m.id) === "claude-x");
+  assert.equal(claude.imageInput, false);
+  assert.equal(claude.reasoning, null);
 });
 
 // ---------- proxy behaviour (providers now come from DB) ----------
@@ -180,6 +248,23 @@ test("rejects proxy requests without a valid client key; /v1/models lists DB pro
   assert.ok(models.data.map((m: any) => m.id).includes("fakeopenai/gpt-x"));
 });
 
+test("multimodal image input is blocked unless the model explicitly allows it", async () => {
+  const blocked = await post("/v1/responses", {
+    model: "fakeresp/gpt-r", input: [{ role: "user", content: [{ type: "input_image", image_url: "data:image/png;base64,AAAA" }] }],
+  });
+  assert.equal(blocked.status, 400);
+  assert.match(JSON.stringify(await blocked.json().catch(() => ({}))), /image/i);
+  const allowed = await post("/v1/chat/completions", {
+    model: "fakeopenai/gpt-x", messages: [{ role: "user", content: [{ type: "image_url", image_url: { url: "data:image/png;base64,AAAA" } }] }],
+  });
+  assert.equal(allowed.status, 200);
+  const unknownBlocked = await post("/v1/chat/completions", {
+    model: "fakeanthropic/claude-x", messages: [{ role: "user", content: [{ type: "image", source: { type: "base64", media_type: "image/png", data: "AAAA" } }] }],
+  });
+  // anthropic model was not marked image-capable -> also blocked
+  assert.equal(unknownBlocked.status, 400);
+});
+
 test("non-streaming completions: passthrough + auth swap + usage counted", async () => {
   const res = await post("/v1/chat/completions", { model: "fakeopenai/gpt-x", messages: [{ role: "user", content: "hi" }] });
   assert.equal(res.status, 200);
@@ -189,6 +274,20 @@ test("non-streaming completions: passthrough + auth swap + usage counted", async
   const [e] = db.recentEvents(1);
   assert.deepEqual({ provider: e.provider, model: e.model, input: e.input, output: e.output, cacheRead: e.cacheRead },
     { provider: "fakeopenai", model: "gpt-x", input: 600, output: 200, cacheRead: 400 });
+});
+
+test("effort is captured from requests (chat + responses + anthropic)", async () => {
+  await post("/v1/chat/completions", { model: "fakeopenai/gpt-x", messages: [], reasoning_effort: "high" });
+  assert.equal(db.recentEvents(1)[0].effort, "high");
+  await post("/v1/chat/completions", { model: "fakeopenai/gpt-x", messages: [] });
+  assert.equal(db.recentEvents(1)[0].effort, "provider");
+  await post("/v1/responses", { model: "fakeresp/gpt-r", input: "hi", reasoning: { effort: "xhigh" } });
+  assert.equal(db.recentEvents(1)[0].effort, "xhigh");
+  await fetch(base + "/v1/messages", {
+    method: "POST", headers: { "content-type": "application/json", "x-api-key": clientKey, "anthropic-version": "2023-06-01" },
+    body: JSON.stringify({ model: "fakeanthropic/claude-x", max_tokens: 8, messages: [], thinking: { type: "enabled", budget_tokens: 4096 } }),
+  });
+  assert.equal(db.recentEvents(1)[0].effort, "budget:4096");
 });
 
 test("streaming completions: intact body, include_usage injected, usage counted", async () => {
@@ -278,7 +377,23 @@ test("POST /api/test-request with a bad key or model returns ok:false (not a raw
   assert.equal((await fetch(base + "/api/test-request", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })).status, 401);
 });
 
-test("GET /api/export downloads a real SQLite backup (session required)", async () => {
+test("proxy request aborts upstream when the client disappears", async () => {
+  const before = db.recentEvents(1)[0]?.id ?? 0;
+  const controller = new AbortController();
+  const pending = fetch(base + "/v1/chat/completions", {
+    method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${clientKey}` },
+    body: JSON.stringify({ model: "fakeopenai/gpt-x", stream: true, messages: [], hang: true }), signal: controller.signal,
+  }).catch(() => null);
+  // Wait until 1Router has opened the hanging upstream request.
+  for (let i = 0; i < 50 && lastUpstream.body?.hang !== true; i++) await new Promise((r) => setTimeout(r, 10));
+  assert.equal(lastUpstream.body?.hang, true);
+  controller.abort();
+  await pending;
+  await new Promise((r) => setTimeout(r, 50));
+  assert.ok((db.recentEvents(1)[0]?.id ?? 0) > before, "the aborted request should still be recorded once");
+});
+
+test("GET /api/export preserves the live session and downloads a real SQLite backup", async () => {
   assert.equal((await fetch(base + "/api/export")).status, 401);
   const res = await admin("/api/export");
   assert.equal(res.status, 200);
@@ -288,10 +403,14 @@ test("GET /api/export downloads a real SQLite backup (session required)", async 
   assert.equal(Buffer.from(bytes.subarray(0, 15)).toString(), "SQLite format 3");
   // the backup contains the seeded provider (i.e. it is a usable copy, not an empty file)
   assert.ok(Buffer.from(bytes).toString("latin1").includes("fakeopenai"));
+  assert.equal((await admin("/api/me")).status, 200, "the live session must survive export");
+  assert.match(res.headers.get("cache-control") ?? "", /no-store/);
 });
 
 test("logout invalidates the session", async () => {
-  const res = await login("newpass123");
+  // The preceding rate-limit test exhausts failures from this test IP; wait for a clean login.
+  let res = await login("newpass123");
+  if (res.status === 429) { await new Promise((r) => setTimeout(r, 150)); res = await login("newpass123"); }
   const c = (res.headers.get("set-cookie") ?? "").split(";")[0];
   assert.equal((await fetch(base + "/api/me", { headers: { cookie: c } })).status, 200);
   await fetch(base + "/api/logout", { method: "POST", headers: { cookie: c } });

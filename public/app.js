@@ -2,6 +2,8 @@
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const fmt = (n) => n.toLocaleString("en-US");
+const REASONING_LEVELS = ["minimal", "low", "medium", "high", "xhigh", "max"];
+const draftModelMeta = new Map();
 let providers = [];
 
 async function api(path, init) {
@@ -70,8 +72,8 @@ async function loadRequests() {
   const limit = $("req-limit")?.value ?? "50";
   const reqs = await api(`/api/requests?limit=${limit}`);
   $("req-body").innerHTML = reqs.map((e) =>
-    `<tr><td>${new Date(e.ts).toLocaleString()}</td><td>${esc(e.provider)}/${esc(e.model)}${e.streaming ? " (stream)" : ""}</td><td class="num">${fmt(e.input)}</td><td class="num">${fmt(e.output)}</td><td class="num">${fmt(e.cacheRead)}/${fmt(e.cacheWrite)}</td><td class="num">${e.httpStatus}${e.usageMissing ? " (no usage)" : ""}</td><td class="num">${e.latencyMs} ms</td></tr>`
-  ).join("") || '<tr><td colspan="7" class="muted">—</td></tr>';
+    `<tr><td>${new Date(e.ts).toLocaleString()}</td><td>${esc(e.provider)}/${esc(e.model)}${e.streaming ? " (stream)" : ""}</td><td class="num">${fmt(e.input)}</td><td class="num">${fmt(e.output)}</td><td class="num">${fmt(e.cacheRead)}/${fmt(e.cacheWrite)}</td><td>${esc(e.effort || "provider")}</td><td class="num">${e.httpStatus}${e.usageMissing ? " (no usage)" : ""}</td><td class="num">${e.latencyMs} ms</td></tr>`
+  ).join("") || '<tr><td colspan="8" class="muted">—</td></tr>';
 }
 async function loadStats() {
   const period = $("period").value, groupBy = $("groupBy").value;
@@ -92,12 +94,54 @@ $("req-limit").addEventListener("change", () => loadRequests().catch(showErr));
 
 // ---------- providers ----------
 function slugify(s) { return s.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, ""); }
+const modelIdOf = (m) => typeof m === "string" ? m : m.modelId ?? m.id;
+function metaFromProvider(p, modelId) {
+  const m = (p?.models ?? []).find((x) => modelIdOf(x) === modelId);
+  if (!m || typeof m === "string") return { modelId, imageInput: draftModelMeta.get(modelId)?.imageInput ?? null, reasoning: draftModelMeta.get(modelId)?.reasoning ?? null, reasoningSource: "unknown", defaultEffort: "provider" };
+  return { modelId, imageInput: m.imageInput ?? null, reasoning: m.reasoning ?? null, reasoningSource: m.reasoning?.source ?? (m.reasoning ? "manual" : "unknown"), defaultEffort: m.defaultEffort ?? m.reasoning?.defaultLevel ?? "provider" };
+}
+function renderModelMetaEditor() {
+  const host = $("p-model-meta");
+  if (!host) return;
+  const models = parseModelList();
+  if (!models.length) { host.innerHTML = '<p class="muted">Add or fetch models, then set Images and Reasoning only when you know them. Unknown reasoning stays Unknown.</p>'; return; }
+  const provider = providers.find((p) => p.id === Number($("p-id").value));
+  host.innerHTML = models.map((modelId) => {
+    const meta = draftModelMeta.get(modelId) ?? metaFromProvider(provider, modelId);
+    const levels = new Set(meta.reasoning?.levels ?? []);
+    return `<div class="model-meta-item" data-model-meta="${esc(modelId)}">
+      <div class="model-meta-head"><code>${esc(modelId)}</code><span class="meta-source">Reasoning: ${esc(meta.reasoningSource === "builtin" ? "Known profile" : meta.reasoning ? "Manual" : "Unknown")} · Default: ${esc(meta.defaultEffort === "provider" ? "Provider default" : meta.defaultEffort)}</span></div>
+      <div class="model-meta-controls">
+        <label class="checkline"><input type="checkbox" data-meta-image ${meta.imageInput === true ? "checked" : ""}> Images allowed</label>
+        <label class="field">Reasoning default
+          <select data-meta-default>${["provider", ...REASONING_LEVELS].map((level) => `<option value="${level}" ${(meta.defaultEffort ?? "provider") === level ? "selected" : ""}>${level === "provider" ? "Provider default" : level}</option>`).join("")}</select>
+        </label>
+        ${REASONING_LEVELS.map((level) => `<label class="checkline"><input type="checkbox" data-meta-level="${level}" ${levels.has(level) ? "checked" : ""}> ${level}</label>`).join("")}
+      </div>
+    </div>`;
+  }).join("");
+}
+function parseModelList() { return $("p-models").value.split(/[\n,]/).map((s) => s.trim()).filter(Boolean).filter((m, i, a) => a.indexOf(m) === i); }
+function readModelMeta() {
+  const metas = [];
+  document.querySelectorAll("[data-model-meta]").forEach((box) => {
+    const modelId = box.getAttribute("data-model-meta");
+    const levels = [...box.querySelectorAll("[data-meta-level]:checked")].map((x) => x.getAttribute("data-meta-level"));
+    const imageInput = box.querySelector("[data-meta-image]")?.checked === true;
+    const defaultEffort = box.querySelector("[data-meta-default]")?.value ?? "provider";
+    metas.push({ id: modelId, imageInput, reasoning: levels.length ? { levels } : null, defaultEffort });
+    draftModelMeta.set(modelId, { modelId, imageInput, reasoning: levels.length ? { levels, defaultLevel: defaultEffort } : null, defaultEffort });
+  });
+  return metas;
+}
+
 function renderProviders() {
   $("providers-body").innerHTML = providers.map((p) =>
     `<tr><td>${esc(p.name)}</td><td><code>${esc(p.slug)}</code></td><td>${esc(p.api)}</td><td>${esc(p.baseUrl)}</td><td>${esc(p.apiKeyMasked || "—")}</td>` +
-    `<td>${p.models.map(esc).join("<br>") || '<span class="muted">none</span>'}</td>` +
+    `<td>${p.models.map((m) => esc(modelIdOf(m))).join("<br>") || '<span class="muted">none</span>'}</td>` +
+    `<td>${p.models.map((m) => { const id = modelIdOf(m); const meta = metaFromProvider(p, id); return `${meta.imageInput ? "Images ✓" : "Images —"}; reasoning: ${meta.reasoning?.levels?.length ? meta.reasoning.levels.join(", ") : "Unknown"}`; }).join("<br>")}</td>` +
     `<td class="actions-col"><div class="actions"><button class="btn btn-small" data-edit="${p.id}">Edit</button><button class="btn btn-small btn-danger" data-del="${p.id}">Delete</button></div></td></tr>`
-  ).join("") || '<tr><td colspan="7" class="muted">None yet.</td></tr>';
+  ).join("") || '<tr><td colspan="8" class="muted">None yet.</td></tr>';
   document.querySelectorAll("[data-edit]").forEach((b) => b.addEventListener("click", () => editProvider(Number(b.dataset.edit))));
   document.querySelectorAll("[data-del]").forEach((b) => b.addEventListener("click", async () => {
     if (!confirm("Delete this provider? (Usage history is kept.)")) return;
@@ -110,29 +154,39 @@ async function loadProviders() { providers = await api("/api/providers"); render
 
 function editProvider(id) {
   const p = providers.find((x) => x.id === id); if (!p) return;
+  draftModelMeta.clear();
+  p.models.forEach((m) => { const meta = metaFromProvider(p, modelIdOf(m)); draftModelMeta.set(meta.modelId, meta); });
   $("p-id").value = p.id; $("p-name").value = p.name; $("p-slug").value = p.slug;
   $("p-api").value = p.api; $("p-baseurl").value = p.baseUrl; $("p-apikey").value = "";
-  $("p-models").value = p.models.join("\n");
+  $("p-models").value = p.models.map(modelIdOf).join("\n");
+  renderModelMetaEditor();
   $("provider-form-title").textContent = "Edit provider: " + p.name;
   $("p-cancel").hidden = false; window.scrollTo({ top: 0, behavior: "smooth" });
 }
 function resetProviderForm() {
-  $("provider-form").reset(); $("p-id").value = "";
+  $("provider-form").reset(); draftModelMeta.clear(); $("p-id").value = "";
+  renderModelMetaEditor();
   $("provider-form-title").textContent = "Add a provider"; $("p-cancel").hidden = true; $("p-msg").textContent = "";
 }
 $("p-cancel").addEventListener("click", resetProviderForm);
 $("p-name").addEventListener("input", () => { if (!$("p-id").value) $("p-slug").value = slugify($("p-name").value); });
+$("p-models").addEventListener("input", renderModelMetaEditor);
+$("p-model-meta").addEventListener("change", readModelMeta);
+renderModelMetaEditor();
 
 $("p-fetch").addEventListener("click", async () => {
   const btn = $("p-fetch");
   setBusy(btn, true, "Fetching…");
   $("p-msg").textContent = "Fetching models from the provider…";
   try {
-    const body = { baseUrl: $("p-baseurl").value, api: $("p-api").value, apiKey: $("p-apikey").value };
+    const body = { baseUrl: $("p-baseurl").value, api: $("p-api").value, apiKey: $("p-apikey").value, providerSlug: $("p-slug").value.trim() || slugify($("p-name").value) };
     if ($("p-id").value) body.providerId = Number($("p-id").value);
     const r = await apiJson("/api/providers/fetch-models", "POST", body);
-    $("p-models").value = r.models.join("\n");
-    $("p-msg").textContent = r.models.length ? `Found ${r.models.length} models.` : "Provider returned no models — type them manually, one per line.";
+    $("p-models").value = r.models.map(modelIdOf).join("\n");
+    draftModelMeta.clear();
+    r.models.forEach((m) => { const id = modelIdOf(m); draftModelMeta.set(id, { modelId: id, imageInput: m.imageInput ?? null, reasoning: m.reasoning ?? null, reasoningSource: m.reasoningSource ?? "unknown", defaultEffort: "provider" }); });
+    renderModelMetaEditor();
+    $("p-msg").textContent = r.models.length ? `Found ${r.models.length} models. Known reasoning profiles were filled in automatically; unknown ones stay Unknown.` : "Provider returned no models — type them manually, one per line.";
   } catch (e) { $("p-msg").textContent = "Could not fetch: " + e.message + " (you can still type model names manually)"; }
   finally { setBusy(btn, false); }
 });
@@ -140,10 +194,12 @@ $("p-fetch").addEventListener("click", async () => {
 $("provider-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const slug = $("p-slug").value.trim() || slugify($("p-name").value);
+  readModelMeta();
   const body = {
     slug, name: $("p-name").value, baseUrl: $("p-baseurl").value, api: $("p-api").value,
-    apiKey: $("p-apikey").value, models: $("p-models").value.split(/[\n,]/).map((s) => s.trim()).filter(Boolean),
+    apiKey: $("p-apikey").value, models: readModelMeta(),
   };
+  if (!body.models.length) body.models = parseModelList();
   const btn = $("p-save");
   setBusy(btn, true, "Saving…");
   try {
@@ -187,7 +243,7 @@ function providerOfModel(fullId) { return providers.find((p) => fullId.startsWit
 function renderGuideModelOptions() {
   const sel = $("g-model"); if (!sel) return;
   const current = sel.value;
-  sel.innerHTML = providers.flatMap((p) => p.models.map((m) => `<option value="${esc(p.slug)}/${esc(m)}">${esc(p.slug)}/${esc(m)}</option>`)).join("");
+  sel.innerHTML = providers.flatMap((p) => p.models.map((m) => { const id = modelIdOf(m); return `<option value="${esc(p.slug)}/${esc(id)}">${esc(p.slug)}/${esc(id)}</option>`; })).join("");
   if (current) sel.value = current;
   renderGuide();
 }
@@ -216,7 +272,17 @@ function renderGuide() {
   for (const pr of providers) {
     piProviders["1router-" + pr.slug] = {
       baseUrl: origin + "/v1", api: pr.api, apiKey: key,
-      models: pr.models.map((m) => ({ id: `${pr.slug}/${m}`, input: ["text", "image"] })),
+      models: pr.models.map((m) => {
+        const id = modelIdOf(m);
+        const meta = metaFromProvider(pr, id);
+        const entry = { id: `${pr.slug}/${id}`, input: meta.imageInput ? ["text", "image"] : ["text"] };
+        if (meta.reasoning?.levels?.length) {
+          entry.reasoning = true;
+          const supported = new Set(meta.reasoning.levels);
+          entry.thinkingLevelMap = Object.fromEntries(["off", ...REASONING_LEVELS].map((level) => [level, level === "off" ? null : supported.has(level) ? level : null]));
+        }
+        return entry;
+      }),
     };
   }
   $("g-pi").textContent = JSON.stringify({ providers: piProviders }, null, 2) || "// Add a provider first";

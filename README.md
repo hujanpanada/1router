@@ -72,8 +72,15 @@ A *provider* is where requests actually go. For each one you enter:
 | Name / Slug | `DeepSeek` / `deepseek` | The slug becomes the model prefix |
 | API type | `openai-completions` | One of the three supported types |
 | Base URL | `https://api.deepseek.com/v1` | The provider's API root |
-| Provider API key | `sk-…` | Stored locally; shown masked (`••••last4`) afterwards |
+| Provider API key | `sk-…` | Stored locally; shown masked (`••••last4`, short keys fully hidden) afterwards |
 | Models | `deepseek-chat` | One per line, or press **Fetch models** to list them from the provider |
+
+After models are added, each gets capability controls: **Images** is never
+assumed — 1Router blocks image input unless you explicitly enable it for
+that model. Recognized provider/model combinations receive a built-in
+**reasoning** profile automatically (e.g. supported effort levels);
+unknown combinations stay `Unknown` until you set levels yourself. The
+default is always shown as `Provider default` unless you choose one.
 
 ### 3. Create a client key (API Keys tab)
 
@@ -117,8 +124,12 @@ Endpoints by API type:
 - **Period** (daily/weekly/monthly/yearly/all-time) × **group by**
   (provider / API key / model). Weekly rows show the Monday–Sunday range.
 - **Recent Requests** (show 10–100) lists each call with its token split,
-  HTTP status, and latency. `(no usage)` means the provider didn't report
-  token counts for that request — there was nothing to count.
+  HTTP status, latency, and the reasoning **effort** the client requested
+  (`provider` when the client did not specify one). `(no usage)` means the
+  provider didn't report token counts for that request — nothing to count.
+- The summary cards always add up **every row shown** for the selected
+  period grouping (choosing Daily groups all history by day; it is not a
+  today-only filter).
 
 ### Troubleshooting
 
@@ -164,6 +175,8 @@ npm start
 ```
 
 Layout: `src/usage.ts` (per-API usage normalization + streaming parsers),
+`src/reasoning.ts` (built-in reasoning profiles + per-model capability
+resolution; manual settings always win over built-ins),
 `src/auth.ts` (password/session helpers), `src/db.ts` (SQLite: settings,
 sessions, providers, keys, usage, stats), `src/server.ts` (proxy + admin API),
 `src/cli.ts` (optional key management from the terminal),

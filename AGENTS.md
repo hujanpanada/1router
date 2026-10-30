@@ -43,6 +43,7 @@ frameworks or build tooling for the frontend.
 | File | Responsibility |
 |---|---|
 | `src/usage.ts` | Per-API usage extraction + incremental SSE parsing. Normalized `input` always **excludes** cached tokens (no double counting: OpenAI's `cached_tokens` is subtracted; Anthropic separates it natively). |
+| `src/reasoning.ts` | Built-in reasoning profiles, keyed by exact provider slug + model ID, and capability resolution (manual > builtin > unknown). Unknown is never guessed from model names outside the curated table. |
 | `src/auth.ts` | Scrypt password hashing, dashboard session helpers, default-password seeding. Default dashboard password is `1router` (seeded hashed, user prompted to change). Never store plaintext. |
 | `src/db.ts` | All SQLite access (`node:sqlite`): settings, sessions, providers, provider_models, client_keys, usage_events, stats aggregation. Usage history migrates in place (schema changes must not drop token counts). |
 | `src/server.ts` | HTTP server: proxy endpoints, dashboard session auth, admin API (`/api/*`), server-side `/api/test-request`, static file serving. |
@@ -62,9 +63,21 @@ Key semantics:
   credential systems; neither can substitute for the other.
 - Stats: periods bucket in **server-local time**, weeks start **Monday**
   (SQLite `weekday 0, -6 days`). Weekly rows display as a Monday–Sunday
-  (or Monday–Today) range — that formatting is UI-only in `app.js`.
+  (or Monday–Today) `YYYY-MM-DD` range — that formatting is UI-only in `app.js`.
 - Streaming completions: the proxy injects `stream_options.include_usage`
   so the final chunk carries usage.
+- Multimodal: image input is **blocked unless a model is explicitly
+  marked image-capable** — unknown means blocked. Built-in reasoning
+  profiles never overwrite explicit user capability settings.
+- Proxy robustness: client disconnects abort the upstream request.
+  Request/response size caps are enforced (413 for inbound, observation
+  caps where service guarantees matter, e.g. `fetch-models`). SSE parsing
+  tolerates multi-line `data:` payloads, string token counts, and drops
+  oversized garbage instead of buffering forever.
+- Backup: `/api/export` mirrors the DB and strips sessions from the copy only.
+  Live sessions must survive export; password changes revoke all sessions.
+- Schema: WAL + busy_timeout + foreign keys, schema versioned via
+  `PRAGMA user_version`; provider writes are transactional.
 
 ## Commands
 

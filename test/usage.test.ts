@@ -60,3 +60,19 @@ test("stream with no usage at all -> null", () => {
   c.push('data: {"choices":[{"delta":{"content":"hi"}}]}\n\ndata: [DONE]\n\n');
   assert.equal(c.result(), null);
 });
+
+test("stream parses multi-line SSE data events and string token counts", () => {
+  const c = new StreamUsageCollector("openai-completions");
+  c.push('data: {"choices":[],"usage":{"prompt_tokens":"1000","completion_tokens":"50","prompt_tokens_details":{"cached_tokens":"100"}}}\n\n');
+  assert.deepEqual(c.result(), { input: 900, output: 50, cacheRead: 100, cacheWrite: 0 });
+  const multi = new StreamUsageCollector("openai-completions");
+  multi.push('data: {"choices":[],\ndata: "usage":{"prompt_tokens":10,"completion_tokens":2}}\n\n');
+  assert.deepEqual(multi.result(), { input: 10, output: 2, cacheRead: 0, cacheWrite: 0 });
+});
+
+test("oversized SSE data is ignored instead of buffering forever", () => {
+  const c = new StreamUsageCollector("openai-completions");
+  c.push('data: ' + 'x'.repeat(70_000) + '\n\n');
+  c.push('data: {"choices":[],"usage":{"prompt_tokens":3,"completion_tokens":1}}\n\n');
+  assert.deepEqual(c.result(), { input: 3, output: 1, cacheRead: 0, cacheWrite: 0 });
+});

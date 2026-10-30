@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createDb, type UsageEventInput } from "../src/db.js";
+import { reasoningProfileFor } from "../src/reasoning.js";
 
 function ev(partial: Partial<UsageEventInput>): UsageEventInput {
   return {
@@ -26,6 +27,106 @@ test("client keys: multiple named keys, hash-only storage, revocable, lastUsed t
   db.revokeKey(a.id);
   assert.equal(db.findKeyBySecret(a.key), null);
   assert.equal(db.findKeyBySecret(b.key)?.name, "work-pc");
+});
+
+// ---------- schema, pragmatas, throttled last-used, mirrored backup ----------
+test("db has schema version, WAL/busy pragmas; key lastUsed throttled", async () => {
+  const { rmSync, existsSync } = await import("node:fs");
+  const path = "test-hardening-tmp.db";
+  try { rmSync(path, { force: true }); rmSync(path + "-wal", { force: true }); rmSync(path + "-shm", { force: true }); } catch {}
+  const made = Date.parse("2030-01-01T00:00:00Z");
+  const db = createDb(path, { now: () => made });
+  assert.equal(db.schemaVersion(), 1);
+  const pragmas = db.pragmas();
+  assert.equal(pragmas.user_version, 1);
+  assert.equal(pragmas.journal_mode, "wal");
+  assert.equal(pragmas.busy_timeout, 5000);
+  assert.equal(pragmas.foreign_keys, 1);
+  const key = db.createKey("throttle");
+  const before = db.listKeys().find((k) => k.id === key.id)!;
+  assert.equal(before.lastUsedAt, null);
+  assert.equal(db.findKeyBySecret(key.key)?.name, "throttle");
+  const after = db.listKeys().find((k) => k.id === key.id)!;
+  assert.equal(after.lastUsedAt, made);
+  // Mutating the returned object must not alter storage; next authenticate is throttled.
+  db.findKeyBySecret(key.key);
+  assert.equal(db.listKeys().find((k) => k.id === key.id)?.lastUsedAt, made);
+  db.close();
+  assert.ok(existsSync(path));
+  rmSync(path, { force: true }); rmSync(path + "-wal", { force: true }); rmSync(path + "-shm", { force: true });
+});
+
+test("serialize strips sessions from the copy but leaves live sessions intact", async () => {
+  const { writeFileSync, rmSync } = await import("node:fs");
+  const db = createDb(":memory:");
+  const s = db.createSession(60_000);
+  const bytes = db.serialize();
+  assert.ok(db.findSession(s.token), "live session must survive export");
+  const path = "test-serialize-tmp.db";
+  writeFileSync(path, bytes);
+  const restored = createDb(path);
+  assert.equal(restored.findSession(s.token), null);
+  restored.close();
+  rmSync(path, { force: true }); rmSync(path + "-wal", { force: true }); rmSync(path + "-shm", { force: true });
+});
+
+test("changeLoginPassword revokes all sessions; pruneExpiredSessions cleans up", () => {
+  const db = createDb(":memory:");
+  db.setSetting("login_password_hash", "HASH");
+  const s = db.createSession(60_000);
+  assert.ok(db.findSession(s.token));
+  db.deleteAllSessions();
+  assert.equal(db.findSession(s.token), null);
+  const old = db.createSession(-1000);
+  assert.equal(db.pruneExpiredSessions(), 1);
+  assert.ok(db.findSession(old.token) === null);
+});
+
+test("provider create/update are transactional on model errors", () => {
+  const db = createDb(":memory:");
+  assert.throws(() => db.createProvider({
+    slug: "atomic", name: "Atomic", baseUrl: "https://x.example/v1", api: "openai-completions", apiKey: "k",
+    models: ["good", "good"], modelMeta: [{ modelId: "good", imageInput: null, reasoning: { levels: ["bogus"] } as any }],
+  }), /invalid reasoning/i);
+  assert.deepEqual(db.listProviders(), []);
+  const p = db.createProvider({ slug: "atomic2", name: "Atomic 2", baseUrl: "https://x.example/v1", api: "openai-responses", apiKey: "k", models: ["m1"] });
+  assert.throws(() => db.updateProvider(p.id, { models: ["m1", "m1"], modelMeta: [{ modelId: "m1", imageInput: null, reasoning: { levels: ["bogus"] } as any }] }), /invalid reasoning/i);
+  assert.deepEqual(db.getProvider(p.id)?.models.map((m) => m.modelId), ["m1"]);
+  assert.equal(db.getProvider(p.id)?.models[0].imageInput, null);
+});
+
+test("providers persist explicit multimodal guards separately from reasoning profiles", () => {
+  const db = createDb(":memory:");
+  const p = db.createProvider({
+    slug: "guards", name: "Guards", baseUrl: "https://x.example/v1", api: "openai-completions", apiKey: "k",
+    models: ["gpt-5", "deepseek-reasoner", "plain-text"],
+  });
+  const provider = db.getProvider(p.id)!;
+  assert.deepEqual(provider.models.map((m) => [m.modelId, m.reasoning]), [
+    ["deepseek-reasoner", null],
+    ["gpt-5", null],
+    ["plain-text", null],
+  ]);
+  const updated = db.updateProvider(p.id, {
+    modelMeta: [
+      { modelId: "gpt-5", imageInput: true, reasoning: { levels: ["low", "medium", "high"], defaultLevel: "provider" } },
+      { modelId: "deepseek-reasoner", imageInput: false, reasoning: { levels: ["low", "high"], defaultLevel: "provider" } },
+    ],
+  });
+  assert.deepEqual(updated.models.map((m) => [m.modelId, m.imageInput, m.reasoning?.levels ?? null, m.reasoning?.source ?? null]), [
+    ["deepseek-reasoner", false, ["low", "high"], "manual"],
+    ["gpt-5", true, ["low", "medium", "high"], "manual"],
+    ["plain-text", null, null, null],
+  ]);
+});
+
+test("reasoningProfileFor is conservative (curated only, no name guessing)", () => {
+  assert.deepEqual(reasoningProfileFor("openai", "gpt-5")?.levels, ["minimal", "low", "medium", "high"]);
+  assert.deepEqual(reasoningProfileFor("openai", "gpt-5.2")?.levels, ["low", "medium", "high", "xhigh"]);
+  assert.deepEqual(reasoningProfileFor("deepseek", "deepseek-flash")?.levels, ["low", "high", "max"]);
+  assert.equal(reasoningProfileFor("deepseek", "deepseek-reasoner"), null);
+  assert.equal(reasoningProfileFor("anything", "gpt-5"), null);
+  assert.equal(reasoningProfileFor("anthropic", "claude-unknown"), null);
 });
 
 // ---------- login password + sessions ----------
@@ -71,6 +172,10 @@ test("providers: CRUD + resolveModel from DB (split on first slash)", () => {
   assert.throws(() => db.createProvider({ slug: "deepseek", name: "dup", baseUrl: "https://x.example/v1", api: "openai-responses", apiKey: "", models: [] }), /already exists/i);
   assert.throws(() => db.createProvider({ slug: "bad slug!", name: "x", baseUrl: "https://x.example/v1", api: "openai-responses", apiKey: "", models: [] }), /slug/i);
   assert.throws(() => db.createProvider({ slug: "ok", name: "x", baseUrl: "https://x.example/v1", api: "google-generative-ai" as any, apiKey: "", models: [] }), /unsupported api/i);
+  assert.throws(
+    () => db.updateProvider(p.id, { modelMeta: [{ modelId: "deepseek-reasoner", imageInput: null, reasoning: { levels: ["bogus"] } as any }] }),
+    /invalid reasoning/i,
+  );
 
   db.deleteProvider(p.id);
   assert.equal(db.resolveModel("deepseek/deepseek-reasoner"), null);
@@ -124,6 +229,7 @@ test("serialize produces a restorable backup without sessions", async () => {
   const path = "test-backup-tmp.db";
   writeFileSync(path, db.serialize());
   const restored = createDb(path);
+  assert.equal(restored.schemaVersion(), 1);
   assert.equal(restored.findKeyBySecret(k.key)?.name, "backup-key");
   assert.equal(restored.listProviders()[0].slug, "openai");
   assert.equal(restored.getSetting("login_password_hash"), "HASH");
@@ -131,6 +237,13 @@ test("serialize produces a restorable backup without sessions", async () => {
   assert.equal(restored.recentEvents(10).length, 1);
   restored.close();
   rmSync(path, { force: true });
+});
+
+test("events store effort when supplied and recent events expose it", () => {
+  const db = createDb(":memory:");
+  const k = db.createKey("effort");
+  db.insertEvent(ev({ clientKeyId: k.id, effort: "high" }));
+  assert.equal(db.recentEvents(1)[0].effort, "high");
 });
 
 test("recentEvents returns newest first", () => {

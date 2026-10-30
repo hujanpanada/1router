@@ -11,8 +11,8 @@ test("Try-it-now key field stays plain text (it is visible in the curl below any
   assert.match(html, /id="g-key"[^>]*type="text"/);
 });
 
-test("Pi config declares image input so multimodal models can receive images", () => {
-  assert.match(js, /input: \["text", "image"\]/);
+test("Pi config declares image input only when the model explicitly allows images", () => {
+  assert.match(js, /input: meta\.imageInput \? \["text", "image"\] : \["text"\]/);
 });
 
 test("weekly breakdown rows use YYYY-MM-DD ranges like every other period", () => {
@@ -24,6 +24,15 @@ test("weekly breakdown rows use YYYY-MM-DD ranges like every other period", () =
 test("default-password banner never shows the password itself", () => {
   const banner = html.slice(html.indexOf('id="default-banner"'), html.indexOf('id="status"'));
   assert.ok(!banner.includes("<code>1router</code>") && !banner.includes(">1router<"));
+});
+
+test("dashboard labels totals as all displayed rows and guides show explicit model guards", () => {
+  assert.match(html, /Totals below add up every row shown/);
+  assert.match(html, /id="p-model-meta"/);
+  assert.match(html, /Reasoning \(optional\)/);
+  assert.match(js, /p-model-meta/);
+  assert.match(js, /thinkingLevelMap/);
+  assert.match(js, /effort/);
 });
 
 test("Settings offers SQLite export; README keeps its screenshot", () => {

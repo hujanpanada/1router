@@ -164,6 +164,19 @@ a.btn:active { transform: translateY(1px) scale(.98); }
 .result { min-height: 1.45em; margin-top: .8rem; overflow-wrap: anywhere; }
 .form-msg:empty::before, .result:empty::before { content: "\00a0"; }
 
+.totals-note { margin: 0 0 -.25rem; }
+
+/* ---------- model capability editor ---------- */
+.model-meta-list { display: flex; flex-direction: column; gap: .85rem; }
+.model-meta-item { border: 1px solid var(--border-soft); background: var(--panel-2); border-radius: 10px; padding: .8rem; }
+.model-meta-head { display: flex; align-items: center; justify-content: space-between; gap: .75rem; margin-bottom: .7rem; }
+.model-meta-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .65rem; }
+.model-meta-controls label { min-width: 0; }
+.checkline { display: flex !important; flex-direction: row !important; align-items: center; gap: .5rem !important; font-weight: 600; }
+.checkline input { width: auto; min-height: auto; }
+.meta-source { color: var(--muted-2); font-size: .78rem; white-space: nowrap; }
+@media (max-width: 640px) { .model-meta-controls { grid-template-columns: 1fr; } }
+
 /* ---------- guide ---------- */
 .steps { margin: .2rem 0 1.1rem; padding-left: 1.35rem; }
 .steps li { margin: .35rem 0; }

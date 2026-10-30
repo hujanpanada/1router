@@ -56,6 +56,7 @@
       <div class="card"><div class="n" id="c-cache">–</div><div class="l">Cache read / write</div></div>
     </div>
 
+    <p class="muted panel-note totals-note">Totals below add up every row shown for the selected period, not just today.</p>
     <div class="panel">
       <div class="panel-head"><h2>Usage breakdown</h2></div>
       <div class="table-wrap">
@@ -81,8 +82,8 @@
       </div>
       <div class="table-wrap">
         <table class="table">
-          <thead><tr><th>Time</th><th>Provider / model</th><th class="num">Input</th><th class="num">Output</th><th class="num">Cache R/W</th><th class="num">Status</th><th class="num">Latency</th></tr></thead>
-          <tbody id="req-body"><tr><td colspan="7" class="muted">—</td></tr></tbody>
+          <thead><tr><th>Time</th><th>Provider / model</th><th class="num">Input</th><th class="num">Output</th><th class="num">Cache R/W</th><th>Effort</th><th class="num">Status</th><th class="num">Latency</th></tr></thead>
+          <tbody id="req-body"><tr><td colspan="8" class="muted">—</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -110,6 +111,13 @@
           <label class="field span-2">Models (one per line)
             <textarea id="p-models" rows="5" placeholder="deepseek-chat&#10;deepseek-reasoner"></textarea>
           </label>
+          <div class="field span-2">
+            <span>Model capabilities</span>
+            <div id="p-model-meta" class="model-meta-list"><p class="muted">Add or fetch models, then set Images and Reasoning only when you know them. Unknown reasoning stays Unknown.</p></div>
+          </div>
+          <label class="field span-2">Reasoning (optional)
+            <span class="muted">Known profiles fill automatically for recognized providers/models. Override levels only if the provider documents different ones. Default stays “Provider default”.</span>
+          </label>
         </div>
         <div class="form-actions">
           <span id="p-msg" class="form-msg"></span>
@@ -126,8 +134,8 @@
       <div class="panel-head"><h2>Your providers</h2></div>
       <div class="table-wrap">
         <table class="table">
-          <thead><tr><th>Name</th><th>Slug</th><th>API type</th><th>Base URL</th><th>Key</th><th>Models</th><th class="actions-col">Actions</th></tr></thead>
-          <tbody id="providers-body"><tr><td colspan="7" class="muted">None yet.</td></tr></tbody>
+          <thead><tr><th>Name</th><th>Slug</th><th>API type</th><th>Base URL</th><th>Key</th><th>Models</th><th>Capabilities</th><th class="actions-col">Actions</th></tr></thead>
+          <tbody id="providers-body"><tr><td colspan="8" class="muted">None yet.</td></tr></tbody>
         </table>
       </div>
     </div>
