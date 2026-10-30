@@ -111,11 +111,7 @@
           <label class="field span-2">Models (one per line)
             <textarea id="p-models" rows="5" placeholder="deepseek-chat&#10;deepseek-reasoner"></textarea>
           </label>
-          <div class="field span-2">
-            <span>Model capabilities <span class="muted">(config only)</span></span>
-            <p class="muted capability-note">These settings are only used to generate config (for example Pi’s <code>models.json</code>). They do not change how the model or provider behaves, and they do not override a harness’s own config. To test what a model actually accepts, use <b>Try it now</b> in <b>How to Use</b>.</p>
-            <div id="p-model-meta" class="model-meta-list"><p class="muted">Add or fetch models, then describe their image and thinking support for generated config.</p></div>
-          </div>
+
         </div>
         <div class="form-actions">
           <span id="p-msg" class="form-msg"></span>
@@ -133,7 +129,7 @@
       <div class="table-wrap providers-wrap">
         <table class="table providers-table">
           <colgroup><col class="col-provider"><col class="col-type"><col class="col-models"><col class="col-actions"></colgroup>
-          <thead><tr><th>Provider</th><th>API type</th><th>Models &amp; capabilities</th><th class="actions-col">Actions</th></tr></thead>
+          <thead><tr><th>Provider</th><th>API type</th><th>Models</th><th class="actions-col">Actions</th></tr></thead>
           <tbody id="providers-body"><tr><td colspan="4" class="muted">None yet.</td></tr></tbody>
         </table>
       </div>
@@ -214,6 +210,19 @@
     <div class="panel">
       <div class="panel-head"><h2>curl</h2><button class="btn btn-small" data-copy="g-curl">Copy curl</button></div>
       <pre id="g-curl" class="code-block"></pre>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>Model capabilities <span class="muted">(config only)</span></h2></div>
+      <p class="muted capability-note">These settings are only used to generate config (for example Pi’s <code>models.json</code>). They do not change how the model or provider behaves, and they do not override a harness’s own config. To test what a model actually accepts, use <b>Try it now</b> above.</p>
+      <label class="field">Provider
+        <select id="cap-provider"></select>
+      </label>
+      <div id="p-model-meta" class="model-meta-list"><p class="muted">Select a provider, then describe its models’ image and thinking support for generated config.</p></div>
+      <div class="form-actions">
+        <span id="cap-msg" class="form-msg"></span>
+        <button type="button" id="cap-save" class="btn btn-primary">Save capabilities</button>
+      </div>
     </div>
 
     <div class="panel">

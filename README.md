@@ -75,15 +75,13 @@ A *provider* is where requests actually go. For each one you enter:
 | Provider API key | `sk-…` | Stored locally; shown masked (`••••last4`, short keys fully hidden) afterwards |
 | Models | `deepseek-chat` | One per line, or press **Fetch models** to list them from the provider |
 
-After models are added, each model also has **capability metadata**. This
-metadata only describes the model for generated config (for example Pi’s
-`models.json`); it does not set how the model or provider behaves, and it
-does not override a harness’s own config. **Images** defaults to blocked
-unless explicitly allowed in 1Router. **Thinking** can be explicitly
-disabled per model: when off, reasoning fields are stripped and Recent
-Requests shows `none`. When on or not set, existing harness/provider
-settings keep working. Use **Try it now / Try a thinking level** in How to
-Use to test what a model actually accepts.
+Capability metadata lives in **How to Use → Model capabilities**, not in
+the provider list. It only describes models for generated config (for
+example Pi’s `models.json`); it does not set model/provider behavior or
+override a harness’s own config. Use **Try it now / Try a thinking level**
+there to test what a model actually accepts. Separately, **Images** defaults
+to blocked unless explicitly allowed in 1Router, and explicitly disabling
+**Thinking** strips reasoning fields (Recent Requests then shows `none`).
 
 ### 3. Create a client key (API Keys tab)
 

@@ -27,13 +27,16 @@ test("default-password banner never shows the password itself", () => {
   assert.ok(!banner.includes("<code>1router</code>") && !banner.includes(">1router<"));
 });
 
-test("providers table is readable: no crushed columns or run-together capabilities", () => {
+test("providers table lists models only; capabilities live in How to Use", () => {
   assert.match(html, /providers-table/);
-  assert.match(html, /Models &amp; capabilities/);
-  assert.doesNotMatch(html, /<th>Models<\/th><th>Capabilities<\/th>/);
+  assert.match(html, /<th>Models<\/th>/);
+  assert.doesNotMatch(html, /Models &amp; capabilities/);
   assert.match(css, /\.providers-table\s*\{[^}]*min-width:\s*980px/);
-  assert.match(css, /\.provider-model-row/);
-  assert.match(js, /provider-model-row/);
+  const providersTab = html.slice(html.indexOf('id="tab-providers"'), html.indexOf('id="tab-keys"'));
+  const guideTab = html.slice(html.indexOf('id="tab-guide"'));
+  assert.ok(!providersTab.includes('id="p-model-meta"'), "capability editor must not be in Providers tab");
+  assert.ok(guideTab.includes('id="p-model-meta"'), "capability editor belongs in How to Use");
+  assert.ok(!providersTab.includes("capability-note"));
 });
 
 test("reasoning controls use a structured grid layout", () => {
@@ -52,9 +55,10 @@ test("thinking toggle disables reasoning controls when off", () => {
 });
 
 test("capabilities are explained as config metadata, not model behavior", () => {
-  assert.match(html, /only used to generate config/i);
-  assert.match(html, /do not change how the model or provider behaves/i);
-  assert.match(html, /To test what a model actually accepts, use <b>Try it now<\/b> in <b>How to Use<\/b>/i);
+  const guideTab = html.slice(html.indexOf('id="tab-guide"'));
+  assert.match(guideTab, /only used to generate config/i);
+  assert.match(guideTab, /do not change how the model or provider behaves/i);
+  assert.match(guideTab, /To test what a model actually accepts, use <b>Try it now<\/b>/i);
 });
 
 test("dashboard labels totals and model settings stay manual", () => {

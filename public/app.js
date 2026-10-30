@@ -100,12 +100,13 @@ function metaFromProvider(p, modelId) {
   if (!m || typeof m === "string") return { modelId, imageInput: draftModelMeta.get(modelId)?.imageInput ?? null, thinking: draftModelMeta.get(modelId)?.thinking ?? null, reasoning: draftModelMeta.get(modelId)?.reasoning ?? null, defaultEffort: "provider" };
   return { modelId, imageInput: m.imageInput ?? null, thinking: m.thinking ?? null, reasoning: m.thinking === false ? null : m.reasoning ?? null, defaultEffort: m.thinking === false ? "provider" : m.defaultEffort ?? m.reasoning?.defaultLevel ?? "provider" };
 }
+function currentCapabilityProvider() { return providers.find((p) => p.id === Number($("cap-provider")?.value)); }
 function renderModelMetaEditor() {
   const host = $("p-model-meta");
   if (!host) return;
-  const models = parseModelList();
-  if (!models.length) { host.innerHTML = '<p class="muted">Add or fetch models, then set Images and Reasoning only when you know them. Unknown reasoning stays Unknown.</p>'; return; }
-  const provider = providers.find((p) => p.id === Number($("p-id").value));
+  const provider = currentCapabilityProvider();
+  const models = provider ? provider.models.map(modelIdOf) : [];
+  if (!models.length) { host.innerHTML = '<p class="muted">Select a provider, then describe its models’ image and thinking support for generated config.</p>'; return; }
   host.innerHTML = models.map((modelId) => {
     const meta = draftModelMeta.get(modelId) ?? metaFromProvider(provider, modelId);
     const levels = new Set(meta.reasoning?.levels ?? []);
@@ -150,12 +151,7 @@ function readModelMeta() {
 
 function renderProviders() {
   $("providers-body").innerHTML = providers.map((p) => {
-    const modelRows = p.models.length ? p.models.map((m) => {
-      const id = modelIdOf(m);
-      const meta = metaFromProvider(p, id);
-      const levels = meta.thinking === false ? "none" : meta.reasoning?.levels?.length ? meta.reasoning.levels.join(", ") : "harness/provider";
-      return `<div class="provider-model-row"><span class="provider-model-name">${esc(id)}</span><span class="provider-model-cap"><span class="${meta.imageInput ? "cap-on" : "cap-off"}">Images ${meta.imageInput ? "✓" : "—"}</span> · Thinking: ${esc(levels)}</span></div>`;
-    }).join("") : '<span class="muted">No models yet</span>';
+    const modelRows = p.models.length ? p.models.map((m) => `<div class="provider-model-row"><span class="provider-model-name">${esc(modelIdOf(m))}</span></div>`).join("") : '<span class="muted">No models yet</span>';
     return `<tr>
       <td><div class="provider-identity"><span class="provider-name">${esc(p.name)}</span><code class="provider-slug">${esc(p.slug)}</code><span class="provider-url">${esc(p.baseUrl)}</span><span class="provider-key">Key ${esc(p.apiKeyMasked || "—")}</span></div></td>
       <td><span class="api-type">${esc(p.api)}</span></td>
@@ -171,29 +167,46 @@ function renderProviders() {
   }));
   renderGuideModelOptions();
 }
-async function loadProviders() { providers = await api("/api/providers"); renderProviders(); }
+function renderCapabilityProviderOptions() {
+  const sel = $("cap-provider");
+  if (!sel) return;
+  const current = sel.value;
+  sel.innerHTML = providers.map((p) => `<option value="${p.id}">${esc(p.name)} (${esc(p.slug)})</option>`).join("");
+  if (current && providers.some((p) => String(p.id) === current)) sel.value = current;
+  renderModelMetaEditor();
+}
+async function loadProviders() { providers = await api("/api/providers"); renderProviders(); renderCapabilityProviderOptions(); }
 
 function editProvider(id) {
   const p = providers.find((x) => x.id === id); if (!p) return;
-  draftModelMeta.clear();
-  p.models.forEach((m) => { const meta = metaFromProvider(p, modelIdOf(m)); draftModelMeta.set(meta.modelId, meta); });
   $("p-id").value = p.id; $("p-name").value = p.name; $("p-slug").value = p.slug;
   $("p-api").value = p.api; $("p-baseurl").value = p.baseUrl; $("p-apikey").value = "";
   $("p-models").value = p.models.map(modelIdOf).join("\n");
-  renderModelMetaEditor();
   $("provider-form-title").textContent = "Edit provider: " + p.name;
   $("p-cancel").hidden = false; window.scrollTo({ top: 0, behavior: "smooth" });
 }
 function resetProviderForm() {
-  $("provider-form").reset(); draftModelMeta.clear(); $("p-id").value = "";
-  renderModelMetaEditor();
+  $("provider-form").reset(); $("p-id").value = "";
   $("provider-form-title").textContent = "Add a provider"; $("p-cancel").hidden = true; $("p-msg").textContent = "";
 }
 $("p-cancel").addEventListener("click", resetProviderForm);
 $("p-name").addEventListener("input", () => { if (!$("p-id").value) $("p-slug").value = slugify($("p-name").value); });
-$("p-models").addEventListener("input", renderModelMetaEditor);
 $("p-model-meta").addEventListener("change", (e) => { readModelMeta(); if (e.target.matches("[data-meta-thinking]")) renderModelMetaEditor(); });
-renderModelMetaEditor();
+$("cap-provider").addEventListener("change", () => { draftModelMeta.clear(); renderModelMetaEditor(); });
+$("cap-save").addEventListener("click", async () => {
+  const provider = currentCapabilityProvider();
+  if (!provider) return;
+  const modelMeta = readModelMeta();
+  const btn = $("cap-save");
+  setBusy(btn, true, "Saving…");
+  try {
+    await apiJson("/api/providers/" + provider.id, "PUT", { models: modelMeta });
+    await loadProviders();
+    $("cap-msg").textContent = "✓ Capabilities saved. Generated config below has been updated.";
+    renderGuide();
+  } catch (err) { $("cap-msg").textContent = "Error: " + err.message; }
+  finally { setBusy(btn, false); }
+});
 
 $("p-fetch").addEventListener("click", async () => {
   const btn = $("p-fetch");
@@ -204,10 +217,7 @@ $("p-fetch").addEventListener("click", async () => {
     if ($("p-id").value) body.providerId = Number($("p-id").value);
     const r = await apiJson("/api/providers/fetch-models", "POST", body);
     $("p-models").value = r.models.map(modelIdOf).join("\n");
-    draftModelMeta.clear();
-    r.models.forEach((m) => { const id = modelIdOf(m); draftModelMeta.set(id, { modelId: id, imageInput: null, thinking: null, reasoning: null, defaultEffort: "provider" }); });
-    renderModelMetaEditor();
-    $("p-msg").textContent = r.models.length ? `Found ${r.models.length} models. Set Images, reasoning levels, and defaults manually below.` : "Provider returned no models — type them manually, one per line.";
+    $("p-msg").textContent = r.models.length ? `Found ${r.models.length} models.` : "Provider returned no models — type them manually, one per line.";
   } catch (e) { $("p-msg").textContent = "Could not fetch: " + e.message + " (you can still type model names manually)"; }
   finally { setBusy(btn, false); }
 });
@@ -215,12 +225,10 @@ $("p-fetch").addEventListener("click", async () => {
 $("provider-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const slug = $("p-slug").value.trim() || slugify($("p-name").value);
-  readModelMeta();
   const body = {
     slug, name: $("p-name").value, baseUrl: $("p-baseurl").value, api: $("p-api").value,
-    apiKey: $("p-apikey").value, models: readModelMeta(),
+    apiKey: $("p-apikey").value, models: parseModelList(),
   };
-  if (!body.models.length) body.models = parseModelList();
   const btn = $("p-save");
   setBusy(btn, true, "Saving…");
   try {
