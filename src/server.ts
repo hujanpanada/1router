@@ -380,13 +380,21 @@ export function createServer(opts: ServerOptions): http.Server {
     if (thinkingLevel && !validLevels.includes(thinkingLevel)) {
       return json(res, 200, { ok: false, status: 400, message: `Unknown thinking level: ${thinkingLevel}. Choose minimal, low, medium, high, xhigh, or max.` });
     }
-    const payload: Record<string, unknown> =
-      target.api === "anthropic-messages"
+    const tryImage = body.tryImage === true;
+    const testPng = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=";
+    const imagePrompt = "What color is this image? Answer with one word.";
+    const payload: Record<string, unknown> = tryImage
+      ? target.api === "anthropic-messages"
+        ? { model: body.model, max_tokens: 32, messages: [{ role: "user", content: [{ type: "image", source: { type: "base64", media_type: "image/png", data: testPng } }, { type: "text", text: imagePrompt }] }] }
+        : target.api === "openai-responses"
+          ? { model: body.model, input: [{ role: "user", content: [{ type: "input_text", text: imagePrompt }, { type: "input_image", image_url: `data:image/png;base64,${testPng}` }] }] }
+          : { model: body.model, messages: [{ role: "user", content: [{ type: "text", text: imagePrompt }, { type: "image_url", image_url: { url: `data:image/png;base64,${testPng}` } }] }] }
+      : target.api === "anthropic-messages"
         ? { model: body.model, max_tokens: thinkingLevel ? 1024 : 50, messages: [{ role: "user", content: "Say hi in 3 words" }] }
         : target.api === "openai-responses"
           ? { model: body.model, input: "Say hi in 3 words" }
           : { model: body.model, messages: [{ role: "user", content: "Say hi in 3 words" }] };
-    if (thinkingLevel) {
+    if (thinkingLevel && !tryImage) {
       if (target.api === "anthropic-messages") payload.thinking = { type: "enabled", budget_tokens: 1024 };
       else if (target.api === "openai-responses") payload.reasoning = { effort: thinkingLevel };
       else payload.reasoning_effort = thinkingLevel;
@@ -408,10 +416,14 @@ export function createServer(opts: ServerOptions): http.Server {
       return json(res, 200, {
         ok: r.ok, status: r.status, latencyMs: Date.now() - started,
         message: r.ok
-          ? thinkingLevel
-            ? `It worked — the provider accepted thinking level “${thinkingLevel}”. Now enable that level for this model in Providers if you want it in Pi. This request was counted.`
-            : "It worked — this request was counted. Open the Dashboard tab to see it."
-          : `The provider answered HTTP ${r.status}: ${detail}`,
+          ? tryImage
+            ? "Image test worked — the provider accepted image input. You can enable Images for this model in Model capabilities below. This request was counted."
+            : thinkingLevel
+              ? `It worked — the provider accepted thinking level “${thinkingLevel}”. Now enable that level for this model in Model capabilities below if you want it in Pi. This request was counted.`
+              : "It worked — this request was counted. Open the Dashboard tab to see it."
+          : tryImage && r.status === 400 && /image-capable/i.test(detail)
+            ? detail
+            : `The provider answered HTTP ${r.status}: ${detail}`,
       });
     } catch (e) {
       const timedOut = (e as Error).name === "TimeoutError" || (e as Error).name === "AbortError";

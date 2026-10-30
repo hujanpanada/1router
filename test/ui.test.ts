@@ -55,6 +55,12 @@ test("capability panel has inner margin and compact capability toggles", () => {
   assert.match(css, /\.model-meta-item\s*\{[^}]*padding:\s*1rem/);
 });
 
+test("Try it now offers an image capability probe", () => {
+  assert.match(html, /id="g-image"/);
+  assert.match(html, /Try image/);
+  assert.match(js, /tryImage/);
+});
+
 test("thinking toggle disables reasoning controls when off", () => {
   assert.match(js, /Thinking allowed/);
   assert.match(js, /data-meta-thinking/);

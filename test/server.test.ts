@@ -239,6 +239,22 @@ test("test-request can try a selected thinking level", async () => {
   assert.equal(db.recentEvents(1)[0].effort, "xhigh");
 });
 
+test("test-request can try image input against the real provider path", async () => {
+  const imageResult = (await (await admin("/api/test-request", {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ model: "fakeopenai/gpt-x", clientKey, tryImage: true }),
+  })).json()) as any;
+  assert.equal(imageResult.ok, true);
+  assert.equal(lastUpstream.body.messages[0].content[1].type, "image_url");
+  const blockedResult = (await (await admin("/api/test-request", {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ model: "fakeresp/gpt-r", clientKey, tryImage: true }),
+  })).json()) as any;
+  assert.equal(blockedResult.ok, false);
+  assert.equal(blockedResult.status, 400);
+  assert.match(blockedResult.message, /not marked as image-capable|image/i);
+});
+
 test("thinking disabled strips requested effort before forwarding", async () => {
   db.updateProvider(db.listProviders().find((p) => p.slug === "fakeopenai")!.id, {
     modelMeta: [{ modelId: "gpt-x", imageInput: true, thinking: false, reasoning: { levels: ["low", "high"], defaultLevel: "low" } }],

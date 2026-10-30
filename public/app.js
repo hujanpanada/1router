@@ -332,7 +332,8 @@ $("g-test").addEventListener("click", async () => {
   try {
     // Server-side test: the browser never calls /v1/* directly, so it can only
     // fail to reach 1Router itself — everything else comes back as a message.
-    const r = await apiJson("/api/test-request", "POST", { model: fullId, clientKey: key, thinkingLevel: $("g-thinking").value || undefined });
+    const tryImage = $("g-image").value === "test";
+    const r = await apiJson("/api/test-request", "POST", { model: fullId, clientKey: key, thinkingLevel: tryImage ? undefined : $("g-thinking").value || undefined, tryImage });
     out.textContent = (r.ok ? "✅ " : "❌ ") + r.message + (r.status ? ` (HTTP ${r.status}, ${r.latencyMs} ms)` : "");
     if (r.ok) setTimeout(() => loadStats().catch(() => {}), 300);
   } catch (e) {
