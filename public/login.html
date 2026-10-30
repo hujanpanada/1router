@@ -4,30 +4,19 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>1Router — Login</title>
-<style>
-  :root { color-scheme: dark; }
-  body { font-family: system-ui, sans-serif; background:#111; color:#eee; display:flex; min-height:100vh; align-items:center; justify-content:center; margin:0; }
-  .box { background:#1b1b1b; border:1px solid #333; border-radius:12px; padding:2rem; width:min(360px, 90vw); }
-  h1 { margin:0 0 .25rem; } .sub { color:#999; margin-bottom:1.5rem; }
-  label { display:block; font-size:.85rem; color:#bbb; margin-bottom:.35rem; }
-  input { width:100%; box-sizing:border-box; background:#222; color:#eee; border:1px solid #444; border-radius:6px; padding:.6rem; margin-bottom:1rem; }
-  button { width:100%; background:#2d5a2d; color:#fff; border:0; border-radius:6px; padding:.65rem; cursor:pointer; font-size:1rem; }
-  button:hover { background:#376e37; }
-  #err { color:#ff8080; min-height:1.2em; font-size:.9rem; }
-  .hint { color:#888; font-size:.8rem; margin-top:1rem; }
-</style>
+<link rel="stylesheet" href="style.css">
 </head>
-<body>
-<div class="box">
+<body class="login-page">
+<div class="login-box">
   <h1>1Router</h1>
   <div class="sub">Enter the dashboard password.</div>
   <form id="f">
-    <label for="pw">Password</label>
+    <label class="login-label" for="pw">Password</label>
     <input id="pw" type="password" autocomplete="current-password" autofocus>
-    <div id="err"></div>
-    <button type="submit">Log in</button>
+    <div id="err" class="login-error" role="alert"></div>
+    <button class="btn btn-primary login-submit" type="submit">Log in</button>
   </form>
-  <div class="hint">First time? The default password is <code>1router</code> — change it in Settings after logging in.</div>
+  <div class="login-hint">First time? The default password is <code>1router</code> — change it in Settings after logging in.</div>
 </div>
 <script>
 document.getElementById("f").addEventListener("submit", async (e) => {

@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 
 const pub = (f: string) => readFileSync(new URL("../../public/" + f, import.meta.url), "utf8"); // dist/test -> project root
 const html = pub("index.html");
+const loginHtml = pub("login.html");
 const css = pub("style.css");
 const js = pub("app.js");
 const readme = readFileSync(new URL("../../README.md", import.meta.url), "utf8");
@@ -82,6 +83,13 @@ test("How to Use shows the provider-test-capabilities-config flow", () => {
   assert.match(html, /Test the model in <b>Try it now<\/b>/);
   assert.match(html, /Set <b>Model capabilities<\/b> from what the test proved/);
   assert.match(html, /generated config|Copy the config/i);
+});
+
+test("login page loads the shared stylesheet", () => {
+  assert.match(loginHtml, /<link rel="stylesheet" href="style\.css">/);
+  assert.match(loginHtml, /class="login-page"/);
+  assert.match(css, /\.login-page/);
+  assert.match(css, /\.login-box/);
 });
 
 test("period selector calls the daily view Today", () => {
