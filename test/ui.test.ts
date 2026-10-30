@@ -59,6 +59,13 @@ test("Settings offers SQLite export", () => {
   assert.ok(readme.includes("images/1router-dashboard.png"));
 });
 
+test("dashboard content has breathing room from the viewport and panel edges", () => {
+  assert.match(css, /--page-gutter:\s*1\.5rem/);
+  assert.match(css, /--panel-gutter:\s*1\.5rem/);
+  assert.match(css, /\.container\s*\{[^}]*padding:[^}]*var\(--page-gutter\)/);
+  assert.match(css, /\.panel\s*\{[^}]*padding:[^}]*var\(--panel-gutter\)/);
+});
+
 test("layout primitives exist for aligned panels/tables/forms", () => {
   for (const cls of ["topbar", "panel", "table-wrap", "form-grid", "cards"]) {
     assert.ok(css.includes("." + cls), `style.css missing .${cls}`);
