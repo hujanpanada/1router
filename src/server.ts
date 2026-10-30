@@ -23,6 +23,11 @@ const PATH_API: Record<string, ApiType> = {
   "/v1/responses": "openai-responses",
   "/v1/messages": "anthropic-messages",
 };
+const INTERNAL_PROBE_PATH: Record<string, string> = {
+  "/internal/probe/chat/completions": "/v1/chat/completions",
+  "/internal/probe/responses": "/v1/responses",
+  "/internal/probe/messages": "/v1/messages",
+};
 const API_PATH: Record<ApiType, string> = {
   "openai-completions": "/chat/completions",
   "openai-responses": "/responses",
@@ -193,7 +198,7 @@ export function createServer(opts: ServerOptions): http.Server {
     } catch { json(res, 404, errBody("Not found", "not_found")); }
   };
 
-  async function proxy(req: http.IncomingMessage, res: http.ServerResponse, expectedApi: ApiType) {
+  async function proxy(req: http.IncomingMessage, res: http.ServerResponse, expectedApi: ApiType, opts: { probeImage?: boolean } = {}) {
     const key = authenticateKey(req);
     if (!key) return json(res, 401, errBody("Invalid or missing 1Router API key. Create one in the web dashboard (API Keys tab) — do not use your provider key here.", "authentication_error"));
 
@@ -206,8 +211,8 @@ export function createServer(opts: ServerOptions): http.Server {
     if (target.api !== expectedApi) {
       return json(res, 400, errBody(`Model ${body.model} is a ${target.api} model, but this endpoint is ${expectedApi}. Use the endpoint for its type (see How to Use).`));
     }
-    if (containsImage(target.api, body) && !target.imageInput) {
-      return json(res, 400, errBody(`Model ${body.model} is not marked as image-capable in 1Router. Enable Images for it in Providers first — 1Router blocks image input unless explicitly allowed.`));
+    if (containsImage(target.api, body) && !target.imageInput && !opts.probeImage) {
+      return json(res, 400, errBody(`Model ${body.model} is not marked as image-capable in 1Router. Enable Images for it in Model capabilities first — 1Router blocks image input unless explicitly allowed.`));
     }
 
     const thinkingDisabled = target.thinking === false;
@@ -407,7 +412,8 @@ export function createServer(opts: ServerOptions): http.Server {
     const host = addr.includes(":") ? `[${addr}]` : addr;
     const started = Date.now();
     try {
-      const r = await fetchFn(`http://${host}:${port}/v1${API_PATH[target.api]}`, {
+      const probePath = target.api === "anthropic-messages" ? "/internal/probe/messages" : target.api === "openai-responses" ? "/internal/probe/responses" : "/internal/probe/chat/completions";
+      const r = await fetchFn(`http://${host}:${port}${tryImage ? probePath : "/v1" + API_PATH[target.api]}`, {
         method: "POST", headers, body: JSON.stringify(payload), signal: AbortSignal.timeout(60_000),
       });
       const { text } = await readResponseText(r, maxResponse);
@@ -421,9 +427,7 @@ export function createServer(opts: ServerOptions): http.Server {
             : thinkingLevel
               ? `It worked — the provider accepted thinking level “${thinkingLevel}”. Now enable that level for this model in Model capabilities below if you want it in Pi. This request was counted.`
               : "It worked — this request was counted. Open the Dashboard tab to see it."
-          : tryImage && r.status === 400 && /image-capable/i.test(detail)
-            ? detail
-            : `The provider answered HTTP ${r.status}: ${detail}`,
+          : `The provider answered HTTP ${r.status}: ${detail}`,
       });
     } catch (e) {
       const timedOut = (e as Error).name === "TimeoutError" || (e as Error).name === "AbortError";
@@ -521,6 +525,7 @@ export function createServer(opts: ServerOptions): http.Server {
         if (!authenticateKey(req)) return json(res, 401, errBody("Invalid or missing 1Router API key", "authentication_error"));
         return json(res, 200, { object: "list", data: db.listModels().map((m) => ({ id: m.id, object: "model", owned_by: m.provider })) });
       }
+      if (req.method === "POST" && path in INTERNAL_PROBE_PATH) return await proxy(req, res, PATH_API[INTERNAL_PROBE_PATH[path]], { probeImage: true });
       if (req.method === "POST" && path in PATH_API) return await proxy(req, res, PATH_API[path]);
 
       const isAdmin = path.startsWith("/api/");
