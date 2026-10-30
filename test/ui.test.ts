@@ -76,6 +76,14 @@ test("capabilities are explained as config metadata, not model behavior", () => 
   assert.match(guideTab, /To test what a model actually accepts, use <b>Try it now<\/b>/i);
 });
 
+test("How to Use shows the provider-test-capabilities-config flow", () => {
+  assert.match(html, /Add your provider/);
+  assert.match(html, /Create a 1Router key/);
+  assert.match(html, /Test the model in <b>Try it now<\/b>/);
+  assert.match(html, /Set <b>Model capabilities<\/b> from what the test proved/);
+  assert.match(html, /generated config|Copy the config/i);
+});
+
 test("dashboard labels totals and model settings stay manual", () => {
   assert.match(html, /Totals below add up every row shown/);
   assert.match(html, /id="p-model-meta"/);

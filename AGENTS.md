@@ -66,12 +66,11 @@ Key semantics:
   (or Monday–Today) `YYYY-MM-DD` range — that formatting is UI-only in `app.js`.
 - Streaming completions: the proxy injects `stream_options.include_usage`
   so the final chunk carries usage.
-- Multimodal: image input is **blocked unless a model is explicitly
-  marked image-capable** — unknown means blocked. Thinking is likewise
-  governed: `thinking=false` strips reasoning fields and records effort
-  `none`; `thinking=true` or unset passes harness effort through and records
-  the actual value. Levels/defaults are manual; users can probe a level
-  via `/api/test-request`.
+- Model capabilities are **display/config metadata only**: they never
+  gate, strip, or rewrite proxy traffic. The intended flow is add provider
+  → probe image/thinking levels via How to Use (`/api/test-request`) →
+  record proven capabilities manually → generate harness config from them.
+  The proxy records the effort the harness actually sent.
 - Proxy robustness: client disconnects abort the upstream request.
   Request/response size caps are enforced (413 for inbound, observation
   caps where service guarantees matter, e.g. `fetch-models`). SSE parsing

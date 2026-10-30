@@ -121,21 +121,6 @@ export function publicProvider(p: ReturnType<Db["listProviders"]>[number]) {
   };
 }
 
-function stripThinking(api: ApiType, body: any): any {
-  const out = { ...body };
-  delete out.reasoning;
-  delete out.reasoning_effort;
-  if (api === "anthropic-messages") {
-    delete out.thinking;
-    if (out.output_config && typeof out.output_config === "object") {
-      const outputConfig = { ...out.output_config };
-      delete outputConfig.effort;
-      out.output_config = outputConfig;
-    }
-  }
-  return out;
-}
-
 function requestEffort(api: ApiType, body: any): string {
   const check = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
   if (api === "openai-completions") return check(body?.reasoning_effort) ?? check(body?.reasoning?.effort) ?? "provider";
@@ -146,24 +131,6 @@ function requestEffort(api: ApiType, body: any): string {
   if (body?.thinking?.budget_tokens) return `budget:${body.thinking.budget_tokens}`;
   if (body?.thinking?.type) return String(body.thinking.type);
   return "provider";
-}
-
-function containsImage(api: ApiType, body: any): boolean {
-  const seen = new Set<any>();
-  const visit = (v: any): boolean => {
-    if (!v || typeof v !== "object" || seen.has(v)) return false;
-    seen.add(v);
-    if (Array.isArray(v)) return v.some(visit);
-    const type = typeof v.type === "string" ? v.type.toLowerCase() : "";
-    if (type === "image" || type === "image_url" || type === "input_image") return true;
-    if (typeof v.image_url === "string") return true;
-    if (v.image_url && typeof v.image_url === "object" && typeof v.image_url.url === "string") return true;
-    if (v.source && typeof v.source === "object" && (v.source.media_type === "image/png" || v.source.media_type === "image/jpeg" || String(v.source.media_type ?? "").startsWith("image/"))) return true;
-    return Object.values(v).some(visit);
-  };
-  if (api === "anthropic-messages") return visit(body?.messages ?? body);
-  if (api === "openai-responses") return visit(body?.input ?? body?.messages ?? body);
-  return visit(body?.messages ?? body);
 }
 
 export function createServer(opts: ServerOptions): http.Server {
@@ -198,7 +165,7 @@ export function createServer(opts: ServerOptions): http.Server {
     } catch { json(res, 404, errBody("Not found", "not_found")); }
   };
 
-  async function proxy(req: http.IncomingMessage, res: http.ServerResponse, expectedApi: ApiType, opts: { probeImage?: boolean } = {}) {
+  async function proxy(req: http.IncomingMessage, res: http.ServerResponse, expectedApi: ApiType) {
     const key = authenticateKey(req);
     if (!key) return json(res, 401, errBody("Invalid or missing 1Router API key. Create one in the web dashboard (API Keys tab) — do not use your provider key here.", "authentication_error"));
 
@@ -211,17 +178,13 @@ export function createServer(opts: ServerOptions): http.Server {
     if (target.api !== expectedApi) {
       return json(res, 400, errBody(`Model ${body.model} is a ${target.api} model, but this endpoint is ${expectedApi}. Use the endpoint for its type (see How to Use).`));
     }
-    if (containsImage(target.api, body) && !target.imageInput && !opts.probeImage) {
-      return json(res, 400, errBody(`Model ${body.model} is not marked as image-capable in 1Router. Enable Images for it in Model capabilities first — 1Router blocks image input unless explicitly allowed.`));
-    }
-
-    const thinkingDisabled = target.thinking === false;
-    const effectiveBody = thinkingDisabled ? stripThinking(target.api, body) : body;
-    const streaming = effectiveBody.stream === true;
+    // Model capabilities are display/config metadata only. They never gate
+    // or rewrite proxy traffic: the harness/provider request passes through.
+    const streaming = body.stream === true;
     const upstreamBody = target.api === "openai-completions" && streaming
-      ? { ...effectiveBody, model: target.modelId, stream_options: { ...(effectiveBody.stream_options ?? {}), include_usage: true } }
-      : { ...effectiveBody, model: target.modelId };
-    const effort = thinkingDisabled ? "none" : requestEffort(target.api, effectiveBody);
+      ? { ...body, model: target.modelId, stream_options: { ...(body.stream_options ?? {}), include_usage: true } }
+      : { ...body, model: target.modelId };
+    const effort = requestEffort(target.api, body);
     const started = Date.now();
     let recorded = false;
 
@@ -525,7 +488,7 @@ export function createServer(opts: ServerOptions): http.Server {
         if (!authenticateKey(req)) return json(res, 401, errBody("Invalid or missing 1Router API key", "authentication_error"));
         return json(res, 200, { object: "list", data: db.listModels().map((m) => ({ id: m.id, object: "model", owned_by: m.provider })) });
       }
-      if (req.method === "POST" && path in INTERNAL_PROBE_PATH) return await proxy(req, res, PATH_API[INTERNAL_PROBE_PATH[path]], { probeImage: true });
+      if (req.method === "POST" && path in INTERNAL_PROBE_PATH) return await proxy(req, res, PATH_API[INTERNAL_PROBE_PATH[path]]);
       if (req.method === "POST" && path in PATH_API) return await proxy(req, res, PATH_API[path]);
 
       const isAdmin = path.startsWith("/api/");

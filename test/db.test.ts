@@ -133,7 +133,7 @@ test("capabilityFor never matches built-in model profiles", () => {
   assert.equal(manual.defaultEffort, "max");
 });
 
-test("thinking can be explicitly disabled separately from image support", () => {
+test("thinking metadata is stored separately from image metadata", () => {
   const db = createDb(":memory:");
   const p = db.createProvider({
     slug: "thinking", name: "Thinking", baseUrl: "https://x.example/v1", api: "openai-completions", apiKey: "k",
@@ -146,7 +146,7 @@ test("thinking can be explicitly disabled separately from image support", () => 
     ],
   });
   assert.deepEqual(updated.models.map((m) => [m.modelId, m.imageInput, m.thinking, m.reasoning?.levels ?? null]), [
-    ["disabled-model", true, false, null],
+    ["disabled-model", true, false, ["low", "high"]],
     ["enabled-model", true, true, ["low", "high"]],
     ["unset-model", null, null, null],
   ]);

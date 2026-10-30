@@ -98,7 +98,7 @@ const modelIdOf = (m) => typeof m === "string" ? m : m.modelId ?? m.id;
 function metaFromProvider(p, modelId) {
   const m = (p?.models ?? []).find((x) => modelIdOf(x) === modelId);
   if (!m || typeof m === "string") return { modelId, imageInput: draftModelMeta.get(modelId)?.imageInput ?? null, thinking: draftModelMeta.get(modelId)?.thinking ?? null, reasoning: draftModelMeta.get(modelId)?.reasoning ?? null, defaultEffort: "provider" };
-  return { modelId, imageInput: m.imageInput ?? null, thinking: m.thinking ?? null, reasoning: m.thinking === false ? null : m.reasoning ?? null, defaultEffort: m.thinking === false ? "provider" : m.defaultEffort ?? m.reasoning?.defaultLevel ?? "provider" };
+  return { modelId, imageInput: m.imageInput ?? null, thinking: m.thinking ?? null, reasoning: m.reasoning ?? null, defaultEffort: m.defaultEffort ?? m.reasoning?.defaultLevel ?? "provider" };
 }
 function currentCapabilityProvider() { return providers.find((p) => p.id === Number($("cap-provider")?.value)); }
 function renderModelMetaEditor() {
@@ -307,7 +307,7 @@ function renderGuide() {
         const id = modelIdOf(m);
         const meta = metaFromProvider(pr, id);
         const entry = { id: `${pr.slug}/${id}`, input: meta.imageInput ? ["text", "image"] : ["text"] };
-        if (meta.thinking !== false && meta.reasoning?.levels?.length) {
+        if (meta.reasoning?.levels?.length) {
           entry.reasoning = true;
           const supported = new Set(meta.reasoning.levels);
           entry.thinkingLevelMap = Object.fromEntries(["off", ...REASONING_LEVELS].map((level) => [level, level === "off" ? null : supported.has(level) ? level : null]));

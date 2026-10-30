@@ -257,18 +257,23 @@ test("test-request can try image input before Images is enabled", async () => {
   assert.match(probeResult.message, /enable Images/i);
 });
 
-test("thinking disabled strips requested effort before forwarding", async () => {
+test("model capabilities are display/config only and never change proxy behavior", async () => {
   db.updateProvider(db.listProviders().find((p) => p.slug === "fakeopenai")!.id, {
-    modelMeta: [{ modelId: "gpt-x", imageInput: true, thinking: false, reasoning: { levels: ["low", "high"], defaultLevel: "low" } }],
+    modelMeta: [{ modelId: "gpt-x", imageInput: false, thinking: false, reasoning: { levels: ["low", "high"], defaultLevel: "low" } }],
   });
-  const res = await post("/v1/chat/completions", { model: "fakeopenai/gpt-x", messages: [], reasoning_effort: "high" });
+  const res = await post("/v1/chat/completions", {
+    model: "fakeopenai/gpt-x",
+    messages: [{ role: "user", content: [{ type: "image_url", image_url: { url: "data:image/png;base64,AAAA" } }] }],
+    reasoning_effort: "high",
+  });
   assert.equal(res.status, 200);
-  assert.equal(lastUpstream.body.reasoning_effort, undefined);
-  assert.equal(db.recentEvents(1)[0].effort, "none");
+  assert.equal(lastUpstream.body.reasoning_effort, "high");
+  assert.equal(lastUpstream.body.messages[0].content[0].type, "image_url");
+  assert.equal(db.recentEvents(1)[0].effort, "high");
   const listed = (await (await admin("/api/providers")).json()) as any[];
   const model = listed.find((p) => p.slug === "fakeopenai").models[0];
   assert.equal(model.thinking, false);
-  assert.equal(model.reasoning, null);
+  assert.deepEqual(model.reasoning.levels, ["low", "high"]);
   // Restore for later tests in this file.
   db.updateProvider(db.listProviders().find((p) => p.slug === "fakeopenai")!.id, {
     modelMeta: [{ modelId: "gpt-x", imageInput: true, thinking: true, reasoning: { levels: ["low", "medium", "high"], defaultLevel: "provider" } }],
@@ -323,21 +328,21 @@ test("rejects proxy requests without a valid client key; /v1/models lists DB pro
   assert.ok(models.data.map((m: any) => m.id).includes("fakeopenai/gpt-x"));
 });
 
-test("multimodal image input is blocked unless the model explicitly allows it", async () => {
-  const blocked = await post("/v1/responses", {
+test("image input passes through regardless of capability metadata", async () => {
+  const responses = await post("/v1/responses", {
     model: "fakeresp/gpt-r", input: [{ role: "user", content: [{ type: "input_image", image_url: "data:image/png;base64,AAAA" }] }],
   });
-  assert.equal(blocked.status, 400);
-  assert.match(JSON.stringify(await blocked.json().catch(() => ({}))), /image/i);
-  const allowed = await post("/v1/chat/completions", {
+  assert.equal(responses.status, 200);
+  const completions = await post("/v1/chat/completions", {
     model: "fakeopenai/gpt-x", messages: [{ role: "user", content: [{ type: "image_url", image_url: { url: "data:image/png;base64,AAAA" } }] }],
   });
-  assert.equal(allowed.status, 200);
-  const unknownBlocked = await post("/v1/chat/completions", {
-    model: "fakeanthropic/claude-x", messages: [{ role: "user", content: [{ type: "image", source: { type: "base64", media_type: "image/png", data: "AAAA" } }] }],
+  assert.equal(completions.status, 200);
+  const anthropic = await fetch(base + "/v1/messages", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-api-key": clientKey, "anthropic-version": "2023-06-01" },
+    body: JSON.stringify({ model: "fakeanthropic/claude-x", max_tokens: 8, messages: [{ role: "user", content: [{ type: "image", source: { type: "base64", media_type: "image/png", data: "AAAA" } }] }] }),
   });
-  // anthropic model was not marked image-capable -> also blocked
-  assert.equal(unknownBlocked.status, 400);
+  assert.equal(anthropic.status, 200);
 });
 
 test("non-streaming completions: passthrough + auth swap + usage counted", async () => {
