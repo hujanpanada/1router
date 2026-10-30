@@ -36,6 +36,13 @@ test("providers table is readable: no crushed columns or run-together capabiliti
   assert.match(js, /provider-model-row/);
 });
 
+test("reasoning controls use a structured grid layout", () => {
+  assert.match(css, /\.reasoning-controls\s*\{[^}]*display:\s*grid/);
+  assert.match(css, /\.reasoning-levels\s*\{/);
+  assert.match(js, /reasoning-levels/);
+  assert.doesNotMatch(css, /\.reasoning-controls\s*\{[^}]*display:\s*contents/);
+});
+
 test("thinking toggle disables reasoning controls when off", () => {
   assert.match(js, /Thinking allowed/);
   assert.match(js, /data-meta-thinking/);

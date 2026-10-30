@@ -116,10 +116,10 @@ function renderModelMetaEditor() {
         <label class="checkline"><input type="checkbox" data-meta-image ${meta.imageInput === true ? "checked" : ""}> Images allowed</label>
         <label class="checkline"><input type="checkbox" data-meta-thinking ${thinkingOn ? "checked" : ""}> Thinking allowed</label>
         <fieldset class="reasoning-controls" ${thinkingOn ? "" : "disabled"}>
-          <label class="field">Reasoning default
+          <label class="field reasoning-default">Reasoning default
             <select data-meta-default>${["provider", ...REASONING_LEVELS].map((level) => `<option value="${level}" ${(meta.defaultEffort ?? "provider") === level ? "selected" : ""}>${level === "provider" ? "Provider default" : level}</option>`).join("")}</select>
           </label>
-          ${REASONING_LEVELS.map((level) => `<label class="checkline"><input type="checkbox" data-meta-level="${level}" ${levels.has(level) ? "checked" : ""}> ${level}</label>`).join("")}
+          <div class="field reasoning-level-field"><span>Reasoning levels</span><div class="reasoning-levels">${REASONING_LEVELS.map((level) => `<label class="checkline"><input type="checkbox" data-meta-level="${level}" ${levels.has(level) ? "checked" : ""}> ${level}</label>`).join("")}</div></div>
         </fieldset>
       </div>
     </div>`;
