@@ -294,6 +294,16 @@ export function createServer(opts: ServerOptions): http.Server {
           return json(res, 200, { authenticated: true, passwordIsDefault: passwordIsDefault(db) });
         }
         if (req.method === "POST" && path === "/api/test-request") return await testRequest(req, res);
+        if (req.method === "GET" && path === "/api/export") {
+          const bytes = db.serialize();
+          const filename = `1router-backup-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.db`;
+          res.writeHead(200, {
+            "content-type": "application/vnd.sqlite3",
+            "content-disposition": `attachment; filename="${filename}"`,
+            "content-length": bytes.length,
+          });
+          return res.end(bytes);
+        }
         if (req.method === "POST" && path === "/api/change-password") {
           const body = await readJson(req);
           const next = String(body?.newPassword ?? "");

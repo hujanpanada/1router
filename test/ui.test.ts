@@ -19,7 +19,7 @@ test("provider models textarea cannot be resized", () => {
 test("every button gives click feedback", () => {
   assert.match(css, /button[^{]*:active\s*\{/);
   assert.match(css, /\.clicked\s*\{/);
-  assert.match(js, /closest\("button"\)/);
+  assert.match(js, /closest\("button, a\.btn"\)/);
   assert.match(js, /classList\.add\("clicked"\)/);
 });
 
@@ -49,6 +49,14 @@ test("weekly breakdown rows show Monday-to-end-of-week range in the UI", () => {
 
 test("brand subheading says API token usage dashboard", () => {
   assert.ok(html.includes("API token usage dashboard"), "brand subheading must say 'API token usage dashboard'");
+});
+
+test("Settings offers SQLite export", () => {
+  assert.match(html, /id="export-db"/);
+  assert.match(html, /Download SQLite backup/);
+  assert.match(js, /export-db/);
+  const readme = readFileSync(new URL("../../README.md", import.meta.url), "utf8");
+  assert.ok(readme.includes("images/1router-dashboard.png"));
 });
 
 test("layout primitives exist for aligned panels/tables/forms", () => {

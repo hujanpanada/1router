@@ -278,6 +278,18 @@ test("POST /api/test-request with a bad key or model returns ok:false (not a raw
   assert.equal((await fetch(base + "/api/test-request", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })).status, 401);
 });
 
+test("GET /api/export downloads a real SQLite backup (session required)", async () => {
+  assert.equal((await fetch(base + "/api/export")).status, 401);
+  const res = await admin("/api/export");
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get("content-type") ?? "", /sqlite/);
+  assert.match(res.headers.get("content-disposition") ?? "", /attachment; filename="1router-backup-.*\.db"/);
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  assert.equal(Buffer.from(bytes.subarray(0, 15)).toString(), "SQLite format 3");
+  // the backup contains the seeded provider (i.e. it is a usable copy, not an empty file)
+  assert.ok(Buffer.from(bytes).toString("latin1").includes("fakeopenai"));
+});
+
 test("logout invalidates the session", async () => {
   const res = await login("newpass123");
   const c = (res.headers.get("set-cookie") ?? "").split(";")[0];

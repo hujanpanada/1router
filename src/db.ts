@@ -84,6 +84,8 @@ export interface Db {
   insertEvent(e: UsageEventInput): number;
   stats(q: { period: StatsPeriod; groupBy: StatsGroupBy }): StatsRow[];
   recentEvents(limit: number): UsageEvent[];
+  /** Consistent standalone copy of the whole DB (sessions cleared), for /api/export. */
+  serialize(): Uint8Array;
   close(): void;
 }
 
@@ -286,6 +288,10 @@ export function createDb(path: string): Db {
         period: r.period, group: r.grp, requests: r.requests, input: r.input, output: r.output,
         cacheRead: r.cache_read, cacheWrite: r.cache_write,
       }));
+    },
+    serialize() {
+      sqlite.exec("DELETE FROM sessions"); // a backup must not carry live logins
+      return sqlite.serialize();
     },
     recentEvents(limit) {
       const rows = sqlite.prepare("SELECT * FROM usage_events ORDER BY id DESC LIMIT ?").all(limit) as any[];

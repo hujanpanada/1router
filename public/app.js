@@ -16,7 +16,7 @@ const apiJson = (path, method, body) => api(path, { method, headers: { "content-
 // ---------- universal button feedback ----------
 // Every click gets an immediate visual pulse; copy buttons additionally say so.
 document.addEventListener("click", (e) => {
-  const btn = e.target.closest("button");
+  const btn = e.target.closest("button, a.btn");
   if (!btn) return;
   btn.classList.remove("clicked");
   void btn.offsetWidth; // restart the animation on rapid repeat clicks
@@ -246,6 +246,12 @@ document.querySelectorAll("[data-copy]").forEach((b) => b.addEventListener("clic
 
 $("default-banner-settings").addEventListener("click", () => {
   document.querySelector('button.tab[data-tab="settings"]')?.click();
+});
+
+$("export-db").addEventListener("click", () => {
+  const msg = $("export-msg");
+  if (msg) msg.textContent = "Downloading your database backup…";
+  setTimeout(() => { if (msg) msg.textContent = "Downloaded. Restore by replacing the database file while 1Router is stopped."; }, 800);
 });
 
 // ---------- settings / logout ----------

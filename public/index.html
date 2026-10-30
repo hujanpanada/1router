@@ -234,6 +234,14 @@
         </div>
       </form>
     </div>
+    <div class="panel narrow">
+      <div class="panel-head"><h2>Backup &amp; export</h2></div>
+      <p class="muted panel-note">Download a copy of the SQLite database: providers (including their API keys), client keys, dashboard settings, and full usage history. Login sessions are not included. Keep the file private — treat it like your provider keys. To restore: stop 1Router, replace the database file (<code>data/1router.db</code> by default), and start it again.</p>
+      <div class="form-actions">
+        <span id="export-msg" class="form-msg"></span>
+        <a id="export-db" class="btn btn-primary" href="/api/export" download>Download SQLite backup (.db)</a>
+      </div>
+    </div>
   </section>
 </main>
 

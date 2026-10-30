@@ -119,6 +119,26 @@ test("stats grouped by client key and by model; periods bucket correctly", () =>
   assert.equal(db.stats({ period: "daily", groupBy: "provider" }).filter((r) => r.group === "openai").length >= 2, true);
 });
 
+test("serialize produces a restorable backup without sessions", async () => {
+  const { writeFileSync, rmSync } = await import("node:fs");
+  const db = createDb(":memory:");
+  const k = db.createKey("backup-key");
+  db.createProvider({ slug: "openai", name: "OpenAI", baseUrl: "https://api.openai.com/v1", api: "openai-responses", apiKey: "secret", models: ["gpt-5"] });
+  db.setSetting("login_password_hash", "HASH");
+  db.createSession(60_000);
+  db.insertEvent(ev({ clientKeyId: k.id }));
+  const path = "test-backup-tmp.db";
+  writeFileSync(path, db.serialize());
+  const restored = createDb(path);
+  assert.equal(restored.findKeyBySecret(k.key)?.name, "backup-key");
+  assert.equal(restored.listProviders()[0].slug, "openai");
+  assert.equal(restored.getSetting("login_password_hash"), "HASH");
+  assert.equal(restored.findSession("anything"), null);
+  assert.equal(restored.recentEvents(10).length, 1);
+  restored.close();
+  rmSync(path, { force: true });
+});
+
 test("recentEvents returns newest first", () => {
   const db = createDb(":memory:");
   db.createKey("k");

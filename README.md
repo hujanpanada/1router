@@ -148,6 +148,14 @@ Endpoints by API type:
 
 Env: `PORT` (8787), `HOST` (127.0.0.1), `DB_PATH` (`data/1router.db`).
 
+### Backup & restore
+
+**Settings → Backup & export → Download SQLite backup (.db)** saves a copy
+of the whole database (providers incl. their keys, client keys, settings,
+usage history; login sessions excluded). Store it somewhere private. To
+restore: stop 1Router, replace the database file with the backup, start
+1Router again.
+
 ## Development
 
 ```bash

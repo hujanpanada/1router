@@ -105,8 +105,9 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
 .btn-danger { color: #ffaaa6; border-color: rgb(217 83 79 / .55); }
 .btn-danger:hover { background: rgb(217 83 79 / .14); }
 .tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
-button.clicked { animation: click-pulse .45s ease; border-color: var(--accent); box-shadow: 0 0 0 3px rgb(63 158 77 / .28); }
+button.clicked, a.btn.clicked { animation: click-pulse .45s ease; border-color: var(--accent); box-shadow: 0 0 0 3px rgb(63 158 77 / .28); }
 button.busy { pointer-events: none; }
+a.btn:active { transform: translateY(1px) scale(.98); }
 @keyframes click-pulse {
   0% { transform: scale(.96); }
   55% { transform: scale(1.025); }
