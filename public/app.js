@@ -216,7 +216,7 @@ function renderGuide() {
   for (const pr of providers) {
     piProviders["1router-" + pr.slug] = {
       baseUrl: origin + "/v1", api: pr.api, apiKey: key,
-      models: pr.models.map((m) => ({ id: `${pr.slug}/${m}` })),
+      models: pr.models.map((m) => ({ id: `${pr.slug}/${m}`, input: ["text", "image"] })),
     };
   }
   $("g-pi").textContent = JSON.stringify({ providers: piProviders }, null, 2) || "// Add a provider first";

@@ -59,6 +59,10 @@ test("Settings offers SQLite export", () => {
   assert.ok(readme.includes("images/1router-dashboard.png"));
 });
 
+test("Pi config declares text + image input so multimodal models can receive images", () => {
+  assert.match(js, /input: \["text", "image"\]/);
+});
+
 test("dashboard content has breathing room from the viewport and panel edges", () => {
   assert.match(css, /--page-gutter:\s*1\.5rem/);
   assert.match(css, /--panel-gutter:\s*1\.5rem/);
