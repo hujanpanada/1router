@@ -98,7 +98,7 @@ const modelIdOf = (m) => typeof m === "string" ? m : m.modelId ?? m.id;
 function metaFromProvider(p, modelId) {
   const m = (p?.models ?? []).find((x) => modelIdOf(x) === modelId);
   if (!m || typeof m === "string") return { modelId, imageInput: draftModelMeta.get(modelId)?.imageInput ?? null, reasoning: draftModelMeta.get(modelId)?.reasoning ?? null, reasoningSource: "unknown", defaultEffort: "provider" };
-  return { modelId, imageInput: m.imageInput ?? null, reasoning: m.reasoning ?? null, reasoningSource: m.reasoning?.source ?? (m.reasoning ? "manual" : "unknown"), defaultEffort: m.defaultEffort ?? m.reasoning?.defaultLevel ?? "provider" };
+  return { modelId, imageInput: m.imageInput ?? null, reasoning: m.reasoning ?? null, defaultEffort: m.defaultEffort ?? m.reasoning?.defaultLevel ?? "provider" };
 }
 function renderModelMetaEditor() {
   const host = $("p-model-meta");
@@ -110,7 +110,7 @@ function renderModelMetaEditor() {
     const meta = draftModelMeta.get(modelId) ?? metaFromProvider(provider, modelId);
     const levels = new Set(meta.reasoning?.levels ?? []);
     return `<div class="model-meta-item" data-model-meta="${esc(modelId)}">
-      <div class="model-meta-head"><code>${esc(modelId)}</code><span class="meta-source">Reasoning: ${esc(meta.reasoningSource === "builtin" ? "Known profile" : meta.reasoning ? "Manual" : "Unknown")} · Default: ${esc(meta.defaultEffort === "provider" ? "Provider default" : meta.defaultEffort)}</span></div>
+      <div class="model-meta-head"><code>${esc(modelId)}</code><span class="meta-source">Reasoning: ${meta.reasoning?.levels?.length ? "Set manually" : "Not set"} · Default: ${esc(meta.defaultEffort === "provider" ? "Provider default" : meta.defaultEffort)}</span></div>
       <div class="model-meta-controls">
         <label class="checkline"><input type="checkbox" data-meta-image ${meta.imageInput === true ? "checked" : ""}> Images allowed</label>
         <label class="field">Reasoning default
@@ -184,9 +184,9 @@ $("p-fetch").addEventListener("click", async () => {
     const r = await apiJson("/api/providers/fetch-models", "POST", body);
     $("p-models").value = r.models.map(modelIdOf).join("\n");
     draftModelMeta.clear();
-    r.models.forEach((m) => { const id = modelIdOf(m); draftModelMeta.set(id, { modelId: id, imageInput: m.imageInput ?? null, reasoning: m.reasoning ?? null, reasoningSource: m.reasoningSource ?? "unknown", defaultEffort: "provider" }); });
+    r.models.forEach((m) => { const id = modelIdOf(m); draftModelMeta.set(id, { modelId: id, imageInput: null, reasoning: null, defaultEffort: "provider" }); });
     renderModelMetaEditor();
-    $("p-msg").textContent = r.models.length ? `Found ${r.models.length} models. Known reasoning profiles were filled in automatically; unknown ones stay Unknown.` : "Provider returned no models — type them manually, one per line.";
+    $("p-msg").textContent = r.models.length ? `Found ${r.models.length} models. Set Images, reasoning levels, and defaults manually below.` : "Provider returned no models — type them manually, one per line.";
   } catch (e) { $("p-msg").textContent = "Could not fetch: " + e.message + " (you can still type model names manually)"; }
   finally { setBusy(btn, false); }
 });
@@ -301,7 +301,7 @@ $("g-test").addEventListener("click", async () => {
   try {
     // Server-side test: the browser never calls /v1/* directly, so it can only
     // fail to reach 1Router itself — everything else comes back as a message.
-    const r = await apiJson("/api/test-request", "POST", { model: fullId, clientKey: key });
+    const r = await apiJson("/api/test-request", "POST", { model: fullId, clientKey: key, thinkingLevel: $("g-thinking").value || undefined });
     out.textContent = (r.ok ? "✅ " : "❌ ") + r.message + (r.status ? ` (HTTP ${r.status}, ${r.latencyMs} ms)` : "");
     if (r.ok) setTimeout(() => loadStats().catch(() => {}), 300);
   } catch (e) {

@@ -227,7 +227,17 @@ test("providers API round-trips model guards in the update request", async () =>
   await admin(`/api/providers/${created.id}`, { method: "DELETE" });
 });
 
-test("provider API exposes only explicit guards and curated defaults never override them", async () => {
+test("test-request can try a selected thinking level", async () => {
+  const result = (await (await admin("/api/test-request", {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ model: "fakeopenai/gpt-x", clientKey, thinkingLevel: "xhigh" }),
+  })).json()) as any;
+  assert.equal(result.ok, true);
+  assert.equal(lastUpstream.body.reasoning_effort, "xhigh");
+  assert.equal(db.recentEvents(1)[0].effort, "xhigh");
+});
+
+test("provider API exposes only explicit guards", async () => {
   const list = (await (await admin("/api/providers")).json()) as any[];
   const openai = list.find((p) => p.slug === "fakeopenai");
   const meta = openai.models.find((m: any) => (m.modelId ?? m.id) === "gpt-x");

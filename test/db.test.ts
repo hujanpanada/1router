@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createDb, type UsageEventInput } from "../src/db.js";
-import { reasoningProfileFor } from "../src/reasoning.js";
+import { capabilityFor } from "../src/reasoning.js";
 
 function ev(partial: Partial<UsageEventInput>): UsageEventInput {
   return {
@@ -120,13 +120,16 @@ test("providers persist explicit multimodal guards separately from reasoning pro
   ]);
 });
 
-test("reasoningProfileFor is conservative (curated only, no name guessing)", () => {
-  assert.deepEqual(reasoningProfileFor("openai", "gpt-5")?.levels, ["minimal", "low", "medium", "high"]);
-  assert.deepEqual(reasoningProfileFor("openai", "gpt-5.2")?.levels, ["low", "medium", "high", "xhigh"]);
-  assert.deepEqual(reasoningProfileFor("deepseek", "deepseek-flash")?.levels, ["low", "high", "max"]);
-  assert.equal(reasoningProfileFor("deepseek", "deepseek-reasoner"), null);
-  assert.equal(reasoningProfileFor("anything", "gpt-5"), null);
-  assert.equal(reasoningProfileFor("anthropic", "claude-unknown"), null);
+test("capabilityFor never matches built-in model profiles", () => {
+  assert.equal(capabilityFor("openai", "gpt-5").reasoning, null);
+  assert.equal(capabilityFor("anthropic", "claude-sonnet-5").reasoning, null);
+  const manual = capabilityFor("openai", "gpt-5", {
+    imageInput: true,
+    reasoning: { levels: ["minimal", "max"], defaultLevel: "max" },
+  });
+  assert.equal(manual.imageInput, true);
+  assert.deepEqual(manual.reasoning?.levels, ["minimal", "max"]);
+  assert.equal(manual.defaultEffort, "max");
 });
 
 // ---------- login password + sessions ----------

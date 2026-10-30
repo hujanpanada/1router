@@ -43,7 +43,7 @@ frameworks or build tooling for the frontend.
 | File | Responsibility |
 |---|---|
 | `src/usage.ts` | Per-API usage extraction + incremental SSE parsing. Normalized `input` always **excludes** cached tokens (no double counting: OpenAI's `cached_tokens` is subtracted; Anthropic separates it natively). |
-| `src/reasoning.ts` | Built-in reasoning profiles, keyed by exact provider slug + model ID, and capability resolution (manual > builtin > unknown). Unknown is never guessed from model names outside the curated table. |
+| `src/reasoning.ts` | Reasoning-level validation and manual per-model capability resolution. 1Router deliberately does **no** provider/model profile matching. |
 | `src/auth.ts` | Scrypt password hashing, dashboard session helpers, default-password seeding. Default dashboard password is `1router` (seeded hashed, user prompted to change). Never store plaintext. |
 | `src/db.ts` | All SQLite access (`node:sqlite`): settings, sessions, providers, provider_models, client_keys, usage_events, stats aggregation. Usage history migrates in place (schema changes must not drop token counts). |
 | `src/server.ts` | HTTP server: proxy endpoints, dashboard session auth, admin API (`/api/*`), server-side `/api/test-request`, static file serving. |
@@ -67,8 +67,8 @@ Key semantics:
 - Streaming completions: the proxy injects `stream_options.include_usage`
   so the final chunk carries usage.
 - Multimodal: image input is **blocked unless a model is explicitly
-  marked image-capable** — unknown means blocked. Built-in reasoning
-  profiles never overwrite explicit user capability settings.
+  marked image-capable** — unknown means blocked. Reasoning levels and
+  defaults are also manual; users can probe a level via `/api/test-request`.
 - Proxy robustness: client disconnects abort the upstream request.
   Request/response size caps are enforced (413 for inbound, observation
   caps where service guarantees matter, e.g. `fetch-models`). SSE parsing

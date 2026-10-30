@@ -333,11 +333,10 @@ export function createServer(opts: ServerOptions): http.Server {
       if (!r.ok) return json(res, 400, errBody(`Upstream /models returned ${r.status}: ${text.slice(0, 200)}`));
       const data = JSON.parse(text);
       const list = Array.isArray(data) ? data : data.data ?? data.models ?? [];
-      const providerHint = body.providerSlug ? String(body.providerSlug) : "";
       const models = list.map((m: any) => {
         const modelId = typeof m === "string" ? m : m.id ?? m.name;
         if (!modelId) return null;
-        return { modelId, id: modelId, imageInput: null, reasoning: capabilityFor(providerHint, modelId).reasoning, reasoningSource: capabilityFor(providerHint, modelId).reasoningSource };
+        return { modelId, id: modelId, imageInput: null, reasoning: null };
       }).filter(Boolean);
       return json(res, 200, { models });
     } catch (e) {
@@ -359,12 +358,22 @@ export function createServer(opts: ServerOptions): http.Server {
     if (!target) {
       return json(res, 200, { ok: false, status: 400, message: `Unknown model: ${String(body.model)}. Use "<provider>/<model>" exactly as shown in the Providers tab.` });
     }
-    const payload =
+    const thinkingLevel = typeof body.thinkingLevel === "string" ? body.thinkingLevel : null;
+    const validLevels = ["minimal", "low", "medium", "high", "xhigh", "max"];
+    if (thinkingLevel && !validLevels.includes(thinkingLevel)) {
+      return json(res, 200, { ok: false, status: 400, message: `Unknown thinking level: ${thinkingLevel}. Choose minimal, low, medium, high, xhigh, or max.` });
+    }
+    const payload: Record<string, unknown> =
       target.api === "anthropic-messages"
-        ? { model: body.model, max_tokens: 50, messages: [{ role: "user", content: "Say hi in 3 words" }] }
+        ? { model: body.model, max_tokens: thinkingLevel ? 1024 : 50, messages: [{ role: "user", content: "Say hi in 3 words" }] }
         : target.api === "openai-responses"
           ? { model: body.model, input: "Say hi in 3 words" }
           : { model: body.model, messages: [{ role: "user", content: "Say hi in 3 words" }] };
+    if (thinkingLevel) {
+      if (target.api === "anthropic-messages") payload.thinking = { type: "enabled", budget_tokens: 1024 };
+      else if (target.api === "openai-responses") payload.reasoning = { effort: thinkingLevel };
+      else payload.reasoning_effort = thinkingLevel;
+    }
     const headers: Record<string, string> = { "content-type": "application/json" };
     if (target.api === "anthropic-messages") { headers["x-api-key"] = suppliedKey; headers["anthropic-version"] = "2023-06-01"; }
     else headers["authorization"] = `Bearer ${suppliedKey}`;
@@ -381,7 +390,11 @@ export function createServer(opts: ServerOptions): http.Server {
       try { detail = JSON.parse(text)?.error?.message ?? detail; } catch { /* keep raw preview */ }
       return json(res, 200, {
         ok: r.ok, status: r.status, latencyMs: Date.now() - started,
-        message: r.ok ? "It worked — this request was counted. Open the Dashboard tab to see it." : `The provider answered HTTP ${r.status}: ${detail}`,
+        message: r.ok
+          ? thinkingLevel
+            ? `It worked — the provider accepted thinking level “${thinkingLevel}”. Now enable that level for this model in Providers if you want it in Pi. This request was counted.`
+            : "It worked — this request was counted. Open the Dashboard tab to see it."
+          : `The provider answered HTTP ${r.status}: ${detail}`,
       });
     } catch (e) {
       const timedOut = (e as Error).name === "TimeoutError" || (e as Error).name === "AbortError";

@@ -26,13 +26,14 @@ test("default-password banner never shows the password itself", () => {
   assert.ok(!banner.includes("<code>1router</code>") && !banner.includes(">1router<"));
 });
 
-test("dashboard labels totals as all displayed rows and guides show explicit model guards", () => {
+test("dashboard labels totals and model settings stay manual", () => {
   assert.match(html, /Totals below add up every row shown/);
   assert.match(html, /id="p-model-meta"/);
-  assert.match(html, /Reasoning \(optional\)/);
-  assert.match(js, /p-model-meta/);
+  assert.match(html, /id="g-thinking"/);
+  assert.match(html, /Try a thinking level/);
+  assert.doesNotMatch(js, /reasoningProfileFor/);
+  assert.match(js, /thinkingLevel/);
   assert.match(js, /thinkingLevelMap/);
-  assert.match(js, /effort/);
 });
 
 test("Settings offers SQLite export; README keeps its screenshot", () => {

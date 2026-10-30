@@ -196,6 +196,17 @@
         <label class="field grow">1Router API key
           <input id="g-key" type="text" autocomplete="off" spellcheck="false" placeholder="Paste a 1Router key (sk-1r-…)">
         </label>
+        <label class="field">Try a thinking level
+          <select id="g-thinking">
+            <option value="">Provider default</option>
+            <option value="minimal">minimal</option>
+            <option value="low">low</option>
+            <option value="medium">medium</option>
+            <option value="high">high</option>
+            <option value="xhigh">xhigh</option>
+            <option value="max">max</option>
+          </select>
+        </label>
         <button id="g-test" class="btn btn-primary">Send test request</button>
       </div>
       <div id="g-test-result" class="result" role="status"></div>

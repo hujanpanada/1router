@@ -77,10 +77,10 @@ A *provider* is where requests actually go. For each one you enter:
 
 After models are added, each gets capability controls: **Images** is never
 assumed — 1Router blocks image input unless you explicitly enable it for
-that model. Recognized provider/model combinations receive a built-in
-**reasoning** profile automatically (e.g. supported effort levels);
-unknown combinations stay `Unknown` until you set levels yourself. The
-default is always shown as `Provider default` unless you choose one.
+that model. **Reasoning** is manual too: tick the levels to expose
+(`minimal`–`max`) and pick a default. 1Router does not match providers or
+model names to built-in profiles. Use **Try a thinking level** in How to
+Use to test whether a provider accepts a level before enabling it.
 
 ### 3. Create a client key (API Keys tab)
 
@@ -175,8 +175,8 @@ npm start
 ```
 
 Layout: `src/usage.ts` (per-API usage normalization + streaming parsers),
-`src/reasoning.ts` (built-in reasoning profiles + per-model capability
-resolution; manual settings always win over built-ins),
+`src/reasoning.ts` (reasoning level validation + manual per-model
+capability resolution; no provider/model matching),
 `src/auth.ts` (password/session helpers), `src/db.ts` (SQLite: settings,
 sessions, providers, keys, usage, stats), `src/server.ts` (proxy + admin API),
 `src/cli.ts` (optional key management from the terminal),
