@@ -136,6 +136,29 @@ a.btn:active { transform: translateY(1px) scale(.98); }
 .table-text { min-width: 560px; }
 .table-text td:first-child { white-space: nowrap; width: 220px; }
 
+/* ---------- providers table ---------- */
+.providers-table { min-width: 980px; table-layout: fixed; }
+.providers-table .col-provider { width: 250px; }
+.providers-table .col-type { width: 180px; }
+.providers-table .col-actions { width: 150px; }
+.providers-table th, .providers-table td { vertical-align: top; padding: .85rem .9rem; }
+.provider-identity { display: flex; flex-direction: column; gap: .35rem; min-width: 0; }
+.provider-name { font-weight: 700; overflow-wrap: normal; word-break: normal; }
+.provider-slug { color: var(--muted); font-size: .82rem; overflow-wrap: normal; word-break: normal; }
+.provider-url { color: var(--muted); font-size: .82rem; overflow-wrap: anywhere; }
+.provider-key { color: var(--muted); white-space: nowrap; }
+.api-type { white-space: normal; overflow-wrap: normal; word-break: normal; line-height: 1.35; }
+.provider-models { display: flex; flex-direction: column; }
+.provider-model-row { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(230px, 1.2fr); gap: .35rem 1rem; padding: .55rem 0; border-bottom: 1px solid var(--border-soft); }
+.provider-model-row:first-child { padding-top: 0; }
+.provider-model-row:last-child { border-bottom: 0; padding-bottom: 0; }
+.provider-model-name { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: .9rem; overflow-wrap: anywhere; }
+.provider-model-cap { color: var(--muted); font-size: .88rem; line-height: 1.4; }
+.cap-on { color: #8fd79a; }
+.cap-off { color: var(--muted-2); }
+.providers-table .actions { flex-direction: column; align-items: stretch; }
+.providers-table .actions .btn { width: 100%; }
+
 /* ---------- banners/messages ---------- */
 .banner {
   display: flex; align-items: center; gap: .75rem; flex-wrap: wrap;

@@ -116,7 +116,7 @@
             <div id="p-model-meta" class="model-meta-list"><p class="muted">Add or fetch models, then set Images and Reasoning only when you know them. Unknown reasoning stays Unknown.</p></div>
           </div>
           <label class="field span-2">Reasoning (optional)
-            <span class="muted">Known profiles fill automatically for recognized providers/models. Override levels only if the provider documents different ones. Default stays “Provider default”.</span>
+            <span class="muted">Set reasoning levels and a default manually per model. Use Try a thinking level in How to Use to test a level before enabling it.</span>
           </label>
         </div>
         <div class="form-actions">
@@ -132,10 +132,11 @@
 
     <div class="panel">
       <div class="panel-head"><h2>Your providers</h2></div>
-      <div class="table-wrap">
-        <table class="table">
-          <thead><tr><th>Name</th><th>Slug</th><th>API type</th><th>Base URL</th><th>Key</th><th>Models</th><th>Capabilities</th><th class="actions-col">Actions</th></tr></thead>
-          <tbody id="providers-body"><tr><td colspan="8" class="muted">None yet.</td></tr></tbody>
+      <div class="table-wrap providers-wrap">
+        <table class="table providers-table">
+          <colgroup><col class="col-provider"><col class="col-type"><col class="col-models"><col class="col-actions"></colgroup>
+          <thead><tr><th>Provider</th><th>API type</th><th>Models &amp; capabilities</th><th class="actions-col">Actions</th></tr></thead>
+          <tbody id="providers-body"><tr><td colspan="4" class="muted">None yet.</td></tr></tbody>
         </table>
       </div>
     </div>

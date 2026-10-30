@@ -136,12 +136,20 @@ function readModelMeta() {
 }
 
 function renderProviders() {
-  $("providers-body").innerHTML = providers.map((p) =>
-    `<tr><td>${esc(p.name)}</td><td><code>${esc(p.slug)}</code></td><td>${esc(p.api)}</td><td>${esc(p.baseUrl)}</td><td>${esc(p.apiKeyMasked || "—")}</td>` +
-    `<td>${p.models.map((m) => esc(modelIdOf(m))).join("<br>") || '<span class="muted">none</span>'}</td>` +
-    `<td>${p.models.map((m) => { const id = modelIdOf(m); const meta = metaFromProvider(p, id); return `${meta.imageInput ? "Images ✓" : "Images —"}; reasoning: ${meta.reasoning?.levels?.length ? meta.reasoning.levels.join(", ") : "Unknown"}`; }).join("<br>")}</td>` +
-    `<td class="actions-col"><div class="actions"><button class="btn btn-small" data-edit="${p.id}">Edit</button><button class="btn btn-small btn-danger" data-del="${p.id}">Delete</button></div></td></tr>`
-  ).join("") || '<tr><td colspan="8" class="muted">None yet.</td></tr>';
+  $("providers-body").innerHTML = providers.map((p) => {
+    const modelRows = p.models.length ? p.models.map((m) => {
+      const id = modelIdOf(m);
+      const meta = metaFromProvider(p, id);
+      const levels = meta.reasoning?.levels?.length ? meta.reasoning.levels.join(", ") : "not set";
+      return `<div class="provider-model-row"><span class="provider-model-name">${esc(id)}</span><span class="provider-model-cap"><span class="${meta.imageInput ? "cap-on" : "cap-off"}">Images ${meta.imageInput ? "✓" : "—"}</span> · Reasoning: ${esc(levels)}</span></div>`;
+    }).join("") : '<span class="muted">No models yet</span>';
+    return `<tr>
+      <td><div class="provider-identity"><span class="provider-name">${esc(p.name)}</span><code class="provider-slug">${esc(p.slug)}</code><span class="provider-url">${esc(p.baseUrl)}</span><span class="provider-key">Key ${esc(p.apiKeyMasked || "—")}</span></div></td>
+      <td><span class="api-type">${esc(p.api)}</span></td>
+      <td><div class="provider-models">${modelRows}</div></td>
+      <td class="actions-col"><div class="actions"><button class="btn btn-small" data-edit="${p.id}">Edit</button><button class="btn btn-small btn-danger" data-del="${p.id}">Delete</button></div></td>
+    </tr>`;
+  }).join("") || '<tr><td colspan="4" class="muted">None yet.</td></tr>';
   document.querySelectorAll("[data-edit]").forEach((b) => b.addEventListener("click", () => editProvider(Number(b.dataset.edit))));
   document.querySelectorAll("[data-del]").forEach((b) => b.addEventListener("click", async () => {
     if (!confirm("Delete this provider? (Usage history is kept.)")) return;

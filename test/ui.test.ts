@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 
 const pub = (f: string) => readFileSync(new URL("../../public/" + f, import.meta.url), "utf8"); // dist/test -> project root
 const html = pub("index.html");
+const css = pub("style.css");
 const js = pub("app.js");
 const readme = readFileSync(new URL("../../README.md", import.meta.url), "utf8");
 
@@ -24,6 +25,15 @@ test("weekly breakdown rows use YYYY-MM-DD ranges like every other period", () =
 test("default-password banner never shows the password itself", () => {
   const banner = html.slice(html.indexOf('id="default-banner"'), html.indexOf('id="status"'));
   assert.ok(!banner.includes("<code>1router</code>") && !banner.includes(">1router<"));
+});
+
+test("providers table is readable: no crushed columns or run-together capabilities", () => {
+  assert.match(html, /providers-table/);
+  assert.match(html, /Models &amp; capabilities/);
+  assert.doesNotMatch(html, /<th>Models<\/th><th>Capabilities<\/th>/);
+  assert.match(css, /\.providers-table\s*\{[^}]*min-width:\s*980px/);
+  assert.match(css, /\.provider-model-row/);
+  assert.match(js, /provider-model-row/);
 });
 
 test("dashboard labels totals and model settings stay manual", () => {
