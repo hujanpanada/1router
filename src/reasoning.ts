@@ -11,6 +11,8 @@ export interface ModelCapability {
   modelId: string;
   /** Safe default is false: 1Router only forwards images when explicitly allowed. */
   imageInput: boolean;
+  /** Only explicit true enables thinking controls/request fields. */
+  thinking: boolean;
   reasoning: ReasoningProfile | null;
   defaultEffort: ThinkingLevel | "provider";
 }
@@ -20,15 +22,17 @@ export interface ModelCapability {
  * does not match providers/models to built-in profiles: provider model
  * names change too often, and a wrong guess is worse than "not set".
  */
-export function capabilityFor(_providerSlug: string, modelId: string, stored?: { imageInput: boolean | null; reasoning: ReasoningProfile | null }): ModelCapability {
-  const reasoning = stored?.reasoning ?? null;
+export function capabilityFor(_providerSlug: string, modelId: string, stored?: { imageInput: boolean | null; thinking?: boolean | null; reasoning: ReasoningProfile | null }): ModelCapability {
+  const thinking = stored?.thinking === true;
+  const reasoning = thinking ? stored?.reasoning ?? null : null;
   return {
     modelId,
     imageInput: stored?.imageInput === true,
+    thinking,
     reasoning: reasoning
       ? { levels: [...reasoning.levels], defaultLevel: reasoning.defaultLevel ?? "provider", source: "manual" }
       : null,
-    defaultEffort: reasoning?.defaultLevel ?? "provider",
+    defaultEffort: thinking ? reasoning?.defaultLevel ?? "provider" : "provider",
   };
 }
 

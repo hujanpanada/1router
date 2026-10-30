@@ -45,6 +45,8 @@ export interface ModelMeta {
   modelId: string;
   /** true=images allowed through the proxy, false=blocked, null=unknown (blocked). */
   imageInput: boolean | null;
+  /** true=thinking controls/request fields enabled, false=none, null=not set (treated as none). */
+  thinking: boolean | null;
   reasoning: ReasoningProfile | null;
 }
 
@@ -72,6 +74,7 @@ export interface ResolvedModel {
   baseUrl: string;
   apiKey: string;
   imageInput: boolean;
+  thinking: boolean | null;
 }
 
 export interface DbPragmas { user_version: number; journal_mode: string; busy_timeout: number; foreign_keys: number }
@@ -130,7 +133,8 @@ function rowsToModelMeta(rows: any[]): ModelMeta[] {
     return {
       modelId: r.model_id,
       imageInput: r.image_input === null || r.image_input === undefined ? null : !!r.image_input,
-      reasoning,
+      thinking: r.thinking === null || r.thinking === undefined ? null : !!r.thinking,
+      reasoning: r.thinking === 1 ? reasoning : null,
     };
   });
 }
@@ -154,7 +158,8 @@ function normalizeModelInputs(models: any[] | undefined): { models: string[]; mo
   for (const m of models ?? []) {
     if (m && typeof m === "object" && typeof m.id === "string") {
       metas.push({ modelId: m.id.trim(), imageInput: m.imageInput === true ? true : m.imageInput === false ? false : null,
-        reasoning: m.reasoning ? validateReasoning({ levels: m.reasoning.levels, defaultLevel: m.defaultEffort ?? m.reasoning.defaultLevel, source: "manual" }, m.id) : null });
+        thinking: m.thinking === true ? true : m.thinking === false ? false : null,
+        reasoning: m.thinking === true && m.reasoning ? validateReasoning({ levels: m.reasoning.levels, defaultLevel: m.defaultEffort ?? m.reasoning.defaultLevel, source: "manual" }, m.id) : null });
     }
   }
   return { models: ids, modelMeta: metas };
@@ -169,7 +174,8 @@ function validateModelMeta(models: string[], meta: ModelMeta[] | undefined, prov
     const entry: ModelMeta = {
       modelId: m.modelId,
       imageInput: m.imageInput === true ? true : m.imageInput === false ? false : null,
-      reasoning: validateReasoning(m.reasoning as unknown, `${providerLabel}/${m.modelId}`),
+      thinking: m.thinking === true ? true : m.thinking === false ? false : null,
+      reasoning: m.thinking === true ? validateReasoning(m.reasoning as unknown, `${providerLabel}/${m.modelId}`) : null,
     };
     if (known.has(m.modelId)) out.set(m.modelId, entry);
   }
@@ -199,6 +205,7 @@ export function createDb(path: string, opts: { now?: () => number } = {}): Db {
       provider_id INTEGER NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
       model_id TEXT NOT NULL,
       image_input INTEGER,
+      thinking INTEGER,
       reasoning TEXT,
       PRIMARY KEY (provider_id, model_id)
     );
@@ -224,6 +231,7 @@ export function createDb(path: string, opts: { now?: () => number } = {}): Db {
   if (keyCols.length && !keyCols.includes("last_used_at")) sqlite.exec("ALTER TABLE client_keys ADD COLUMN last_used_at INTEGER");
   const modelCols = (sqlite.prepare("PRAGMA table_info(provider_models)").all() as any[]).map((c) => c.name);
   if (modelCols.length && !modelCols.includes("image_input")) sqlite.exec("ALTER TABLE provider_models ADD COLUMN image_input INTEGER");
+  if (modelCols.length && !modelCols.includes("thinking")) sqlite.exec("ALTER TABLE provider_models ADD COLUMN thinking INTEGER");
   if (modelCols.length && !modelCols.includes("reasoning")) sqlite.exec("ALTER TABLE provider_models ADD COLUMN reasoning TEXT");
 
   // Stamp the schema version once. Existing v0 databases graduate to v1
@@ -235,7 +243,7 @@ export function createDb(path: string, opts: { now?: () => number } = {}): Db {
     id: r.id, name: r.name, createdAt: r.created_at, lastUsedAt: r.last_used_at ?? null, revokedAt: r.revoked_at ?? null,
   });
   const modelsOf = (pid: number): ModelMeta[] =>
-    rowsToModelMeta(sqlite.prepare("SELECT model_id, image_input, reasoning FROM provider_models WHERE provider_id = ? ORDER BY model_id").all(pid) as any[]);
+    rowsToModelMeta(sqlite.prepare("SELECT model_id, image_input, thinking, reasoning FROM provider_models WHERE provider_id = ? ORDER BY model_id").all(pid) as any[]);
   const providerFromRow = (r: any): Provider => ({
     id: r.id, slug: r.slug, name: r.name, baseUrl: r.base_url, api: r.api, apiKey: r.api_key,
     createdAt: r.created_at, models: modelsOf(r.id),
@@ -318,10 +326,10 @@ export function createDb(path: string, opts: { now?: () => number } = {}): Db {
         const info = sqlite.prepare("INSERT INTO providers (slug, name, base_url, api, api_key, created_at) VALUES (?, ?, ?, ?, ?, ?)")
           .run(slug, input.name.trim() || slug, input.baseUrl.replace(/\/+$/, ""), input.api, input.apiKey ?? "", now());
         const id = Number(info.lastInsertRowid);
-        const ins = sqlite.prepare("INSERT INTO provider_models (provider_id, model_id, image_input, reasoning) VALUES (?, ?, ?, ?)");
+        const ins = sqlite.prepare("INSERT INTO provider_models (provider_id, model_id, image_input, thinking, reasoning) VALUES (?, ?, ?, ?, ?)");
         for (const mid of models) {
           const m = meta.get(mid);
-          ins.run(id, mid, m?.imageInput === null || m?.imageInput === undefined ? null : m.imageInput ? 1 : 0, m?.reasoning ? JSON.stringify(m.reasoning) : null);
+          ins.run(id, mid, m?.imageInput == null ? null : m.imageInput ? 1 : 0, m?.thinking == null ? null : m.thinking ? 1 : 0, m?.thinking === true && m?.reasoning ? JSON.stringify(m.reasoning) : null);
         }
         sqlite.exec("COMMIT");
         return api.getProvider(id)!;
@@ -342,7 +350,7 @@ export function createDb(path: string, opts: { now?: () => number } = {}): Db {
       const mergedMeta = new Map<string, ModelMeta>();
       for (const mid of models) {
         const prev = existing.get(mid);
-        mergedMeta.set(mid, { modelId: mid, imageInput: prev?.imageInput ?? null, reasoning: prev?.reasoning ?? null });
+        mergedMeta.set(mid, { modelId: mid, imageInput: prev?.imageInput ?? null, thinking: prev?.thinking ?? null, reasoning: prev?.thinking === true ? prev.reasoning ?? null : null });
       }
       const objectMeta = normalizedPatch?.modelMeta ?? [];
       if (objectMeta.length || patch.modelMeta) {
@@ -356,10 +364,10 @@ export function createDb(path: string, opts: { now?: () => number } = {}): Db {
         sqlite.prepare("UPDATE providers SET slug = ?, name = ?, base_url = ?, api = ?, api_key = ? WHERE id = ?")
           .run(slug, (patch.name ?? current.name).trim() || slug, baseUrl, apiType, patch.apiKey ? patch.apiKey : current.apiKey, id);
         sqlite.prepare("DELETE FROM provider_models WHERE provider_id = ?").run(id);
-        const ins = sqlite.prepare("INSERT INTO provider_models (provider_id, model_id, image_input, reasoning) VALUES (?, ?, ?, ?)");
+        const ins = sqlite.prepare("INSERT INTO provider_models (provider_id, model_id, image_input, thinking, reasoning) VALUES (?, ?, ?, ?, ?)");
         for (const mid of models) {
           const m = mergedMeta.get(mid);
-          ins.run(id, mid, m?.imageInput === null || m?.imageInput === undefined ? null : m.imageInput ? 1 : 0, m?.reasoning ? JSON.stringify(m.reasoning) : null);
+          ins.run(id, mid, m?.imageInput == null ? null : m.imageInput ? 1 : 0, m?.thinking == null ? null : m.thinking ? 1 : 0, m?.thinking === true && m?.reasoning ? JSON.stringify(m.reasoning) : null);
         }
         sqlite.exec("COMMIT");
         return api.getProvider(id)!;
@@ -387,9 +395,9 @@ export function createDb(path: string, opts: { now?: () => number } = {}): Db {
       const modelId = fullId.slice(slash + 1);
       const r = getProviderRowBySlug(slug);
       if (!r) return null;
-      const row = sqlite.prepare("SELECT image_input FROM provider_models WHERE provider_id = ? AND model_id = ?").get(r.id, modelId) as any;
+      const row = sqlite.prepare("SELECT image_input, thinking FROM provider_models WHERE provider_id = ? AND model_id = ?").get(r.id, modelId) as any;
       if (!row) return null;
-      return { provider: r.slug, providerName: r.name, modelId, api: r.api, baseUrl: r.base_url, apiKey: r.api_key, imageInput: row.image_input === 1 };
+      return { provider: r.slug, providerName: r.name, modelId, api: r.api, baseUrl: r.base_url, apiKey: r.api_key, imageInput: row.image_input === 1, thinking: row.thinking === null ? null : row.thinking === 1 };
     },
     listModels() {
       const rows = sqlite.prepare(`

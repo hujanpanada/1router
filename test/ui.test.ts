@@ -36,6 +36,14 @@ test("providers table is readable: no crushed columns or run-together capabiliti
   assert.match(js, /provider-model-row/);
 });
 
+test("thinking toggle disables reasoning controls when off", () => {
+  assert.match(js, /Thinking allowed/);
+  assert.match(js, /data-meta-thinking/);
+  assert.match(js, /syncThinkingControls/);
+  assert.match(js, /thinking,/);
+  assert.match(css, /\.model-meta-item\.thinking-off/);
+});
+
 test("dashboard labels totals and model settings stay manual", () => {
   assert.match(html, /Totals below add up every row shown/);
   assert.match(html, /id="p-model-meta"/);

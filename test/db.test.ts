@@ -86,11 +86,11 @@ test("provider create/update are transactional on model errors", () => {
   const db = createDb(":memory:");
   assert.throws(() => db.createProvider({
     slug: "atomic", name: "Atomic", baseUrl: "https://x.example/v1", api: "openai-completions", apiKey: "k",
-    models: ["good", "good"], modelMeta: [{ modelId: "good", imageInput: null, reasoning: { levels: ["bogus"] } as any }],
+    models: ["good", "good"], modelMeta: [{ modelId: "good", imageInput: null, thinking: true, reasoning: { levels: ["bogus"] } as any }],
   }), /invalid reasoning/i);
   assert.deepEqual(db.listProviders(), []);
   const p = db.createProvider({ slug: "atomic2", name: "Atomic 2", baseUrl: "https://x.example/v1", api: "openai-responses", apiKey: "k", models: ["m1"] });
-  assert.throws(() => db.updateProvider(p.id, { models: ["m1", "m1"], modelMeta: [{ modelId: "m1", imageInput: null, reasoning: { levels: ["bogus"] } as any }] }), /invalid reasoning/i);
+  assert.throws(() => db.updateProvider(p.id, { models: ["m1", "m1"], modelMeta: [{ modelId: "m1", imageInput: null, thinking: true, reasoning: { levels: ["bogus"] } as any }] }), /invalid reasoning/i);
   assert.deepEqual(db.getProvider(p.id)?.models.map((m) => m.modelId), ["m1"]);
   assert.equal(db.getProvider(p.id)?.models[0].imageInput, null);
 });
@@ -109,8 +109,8 @@ test("providers persist explicit multimodal guards separately from reasoning pro
   ]);
   const updated = db.updateProvider(p.id, {
     modelMeta: [
-      { modelId: "gpt-5", imageInput: true, reasoning: { levels: ["low", "medium", "high"], defaultLevel: "provider" } },
-      { modelId: "deepseek-reasoner", imageInput: false, reasoning: { levels: ["low", "high"], defaultLevel: "provider" } },
+      { modelId: "gpt-5", imageInput: true, thinking: true, reasoning: { levels: ["low", "medium", "high"], defaultLevel: "provider" } },
+      { modelId: "deepseek-reasoner", imageInput: false, thinking: true, reasoning: { levels: ["low", "high"], defaultLevel: "provider" } },
     ],
   });
   assert.deepEqual(updated.models.map((m) => [m.modelId, m.imageInput, m.reasoning?.levels ?? null, m.reasoning?.source ?? null]), [
@@ -125,11 +125,34 @@ test("capabilityFor never matches built-in model profiles", () => {
   assert.equal(capabilityFor("anthropic", "claude-sonnet-5").reasoning, null);
   const manual = capabilityFor("openai", "gpt-5", {
     imageInput: true,
+    thinking: true,
     reasoning: { levels: ["minimal", "max"], defaultLevel: "max" },
   });
   assert.equal(manual.imageInput, true);
   assert.deepEqual(manual.reasoning?.levels, ["minimal", "max"]);
   assert.equal(manual.defaultEffort, "max");
+});
+
+test("thinking can be explicitly disabled separately from image support", () => {
+  const db = createDb(":memory:");
+  const p = db.createProvider({
+    slug: "thinking", name: "Thinking", baseUrl: "https://x.example/v1", api: "openai-completions", apiKey: "k",
+    models: ["enabled-model", "disabled-model", "unset-model"],
+  });
+  const updated = db.updateProvider(p.id, {
+    modelMeta: [
+      { modelId: "enabled-model", imageInput: true, thinking: true, reasoning: { levels: ["low", "high"], defaultLevel: "low" } },
+      { modelId: "disabled-model", imageInput: true, thinking: false, reasoning: { levels: ["low", "high"], defaultLevel: "low" } },
+    ],
+  });
+  assert.deepEqual(updated.models.map((m) => [m.modelId, m.imageInput, m.thinking, m.reasoning?.levels ?? null]), [
+    ["disabled-model", true, false, null],
+    ["enabled-model", true, true, ["low", "high"]],
+    ["unset-model", null, null, null],
+  ]);
+  assert.equal(db.resolveModel("thinking/enabled-model")?.thinking, true);
+  assert.equal(db.resolveModel("thinking/disabled-model")?.thinking, false);
+  assert.equal(db.resolveModel("thinking/unset-model")?.thinking, null);
 });
 
 // ---------- login password + sessions ----------
@@ -176,7 +199,7 @@ test("providers: CRUD + resolveModel from DB (split on first slash)", () => {
   assert.throws(() => db.createProvider({ slug: "bad slug!", name: "x", baseUrl: "https://x.example/v1", api: "openai-responses", apiKey: "", models: [] }), /slug/i);
   assert.throws(() => db.createProvider({ slug: "ok", name: "x", baseUrl: "https://x.example/v1", api: "google-generative-ai" as any, apiKey: "", models: [] }), /unsupported api/i);
   assert.throws(
-    () => db.updateProvider(p.id, { modelMeta: [{ modelId: "deepseek-reasoner", imageInput: null, reasoning: { levels: ["bogus"] } as any }] }),
+    () => db.updateProvider(p.id, { modelMeta: [{ modelId: "deepseek-reasoner", imageInput: null, thinking: true, reasoning: { levels: ["bogus"] } as any }] }),
     /invalid reasoning/i,
   );
 

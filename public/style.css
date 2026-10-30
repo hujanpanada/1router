@@ -198,6 +198,9 @@ a.btn:active { transform: translateY(1px) scale(.98); }
 .checkline { display: flex !important; flex-direction: row !important; align-items: center; gap: .5rem !important; font-weight: 600; }
 .checkline input { width: auto; min-height: auto; }
 .meta-source { color: var(--muted-2); font-size: .78rem; white-space: nowrap; }
+.reasoning-controls { display: contents; border: 0; padding: 0; margin: 0; min-width: 0; }
+.model-meta-item.thinking-off .reasoning-controls { opacity: .45; }
+.model-meta-item.thinking-off .reasoning-controls input, .model-meta-item.thinking-off .reasoning-controls select { cursor: not-allowed; }
 @media (max-width: 640px) { .model-meta-controls { grid-template-columns: 1fr; } }
 
 /* ---------- guide ---------- */

@@ -97,8 +97,8 @@ function slugify(s) { return s.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-"
 const modelIdOf = (m) => typeof m === "string" ? m : m.modelId ?? m.id;
 function metaFromProvider(p, modelId) {
   const m = (p?.models ?? []).find((x) => modelIdOf(x) === modelId);
-  if (!m || typeof m === "string") return { modelId, imageInput: draftModelMeta.get(modelId)?.imageInput ?? null, reasoning: draftModelMeta.get(modelId)?.reasoning ?? null, reasoningSource: "unknown", defaultEffort: "provider" };
-  return { modelId, imageInput: m.imageInput ?? null, reasoning: m.reasoning ?? null, defaultEffort: m.defaultEffort ?? m.reasoning?.defaultLevel ?? "provider" };
+  if (!m || typeof m === "string") return { modelId, imageInput: draftModelMeta.get(modelId)?.imageInput ?? null, thinking: draftModelMeta.get(modelId)?.thinking ?? null, reasoning: draftModelMeta.get(modelId)?.reasoning ?? null, defaultEffort: "provider" };
+  return { modelId, imageInput: m.imageInput ?? null, thinking: m.thinking ?? null, reasoning: m.thinking === true ? m.reasoning ?? null : null, defaultEffort: m.thinking === true ? m.defaultEffort ?? m.reasoning?.defaultLevel ?? "provider" : "provider" };
 }
 function renderModelMetaEditor() {
   const host = $("p-model-meta");
@@ -109,28 +109,41 @@ function renderModelMetaEditor() {
   host.innerHTML = models.map((modelId) => {
     const meta = draftModelMeta.get(modelId) ?? metaFromProvider(provider, modelId);
     const levels = new Set(meta.reasoning?.levels ?? []);
-    return `<div class="model-meta-item" data-model-meta="${esc(modelId)}">
-      <div class="model-meta-head"><code>${esc(modelId)}</code><span class="meta-source">Reasoning: ${meta.reasoning?.levels?.length ? "Set manually" : "Not set"} · Default: ${esc(meta.defaultEffort === "provider" ? "Provider default" : meta.defaultEffort)}</span></div>
+    const thinkingOn = meta.thinking === true;
+    return `<div class="model-meta-item ${thinkingOn ? "" : "thinking-off"}" data-model-meta="${esc(modelId)}">
+      <div class="model-meta-head"><code>${esc(modelId)}</code><span class="meta-source">Thinking: ${thinkingOn ? "Allowed" : "None"} · Reasoning: ${thinkingOn && meta.reasoning?.levels?.length ? "Set manually" : "Not set"} · Default: ${esc(thinkingOn && meta.defaultEffort !== "provider" ? meta.defaultEffort : "Provider default")}</span></div>
       <div class="model-meta-controls">
         <label class="checkline"><input type="checkbox" data-meta-image ${meta.imageInput === true ? "checked" : ""}> Images allowed</label>
-        <label class="field">Reasoning default
-          <select data-meta-default>${["provider", ...REASONING_LEVELS].map((level) => `<option value="${level}" ${(meta.defaultEffort ?? "provider") === level ? "selected" : ""}>${level === "provider" ? "Provider default" : level}</option>`).join("")}</select>
-        </label>
-        ${REASONING_LEVELS.map((level) => `<label class="checkline"><input type="checkbox" data-meta-level="${level}" ${levels.has(level) ? "checked" : ""}> ${level}</label>`).join("")}
+        <label class="checkline"><input type="checkbox" data-meta-thinking ${thinkingOn ? "checked" : ""}> Thinking allowed</label>
+        <fieldset class="reasoning-controls" ${thinkingOn ? "" : "disabled"}>
+          <label class="field">Reasoning default
+            <select data-meta-default>${["provider", ...REASONING_LEVELS].map((level) => `<option value="${level}" ${(meta.defaultEffort ?? "provider") === level ? "selected" : ""}>${level === "provider" ? "Provider default" : level}</option>`).join("")}</select>
+          </label>
+          ${REASONING_LEVELS.map((level) => `<label class="checkline"><input type="checkbox" data-meta-level="${level}" ${levels.has(level) ? "checked" : ""}> ${level}</label>`).join("")}
+        </fieldset>
       </div>
     </div>`;
   }).join("");
 }
 function parseModelList() { return $("p-models").value.split(/[\n,]/).map((s) => s.trim()).filter(Boolean).filter((m, i, a) => a.indexOf(m) === i); }
+function syncThinkingControls(box) {
+  const on = box.querySelector("[data-meta-thinking]")?.checked === true;
+  box.classList.toggle("thinking-off", !on);
+  const controls = box.querySelector(".reasoning-controls");
+  if (controls) controls.disabled = !on;
+}
 function readModelMeta() {
   const metas = [];
   document.querySelectorAll("[data-model-meta]").forEach((box) => {
     const modelId = box.getAttribute("data-model-meta");
-    const levels = [...box.querySelectorAll("[data-meta-level]:checked")].map((x) => x.getAttribute("data-meta-level"));
+    syncThinkingControls(box);
+    const thinking = box.querySelector("[data-meta-thinking]")?.checked === true;
+    const levels = thinking ? [...box.querySelectorAll("[data-meta-level]:checked")].map((x) => x.getAttribute("data-meta-level")) : [];
     const imageInput = box.querySelector("[data-meta-image]")?.checked === true;
-    const defaultEffort = box.querySelector("[data-meta-default]")?.value ?? "provider";
-    metas.push({ id: modelId, imageInput, reasoning: levels.length ? { levels } : null, defaultEffort });
-    draftModelMeta.set(modelId, { modelId, imageInput, reasoning: levels.length ? { levels, defaultLevel: defaultEffort } : null, defaultEffort });
+    const defaultEffort = thinking ? box.querySelector("[data-meta-default]")?.value ?? "provider" : "provider";
+    const reasoning = thinking && levels.length ? { levels, defaultLevel: defaultEffort } : null;
+    metas.push({ id: modelId, imageInput, thinking, reasoning, defaultEffort });
+    draftModelMeta.set(modelId, { modelId, imageInput, thinking, reasoning, defaultEffort });
   });
   return metas;
 }
@@ -140,8 +153,8 @@ function renderProviders() {
     const modelRows = p.models.length ? p.models.map((m) => {
       const id = modelIdOf(m);
       const meta = metaFromProvider(p, id);
-      const levels = meta.reasoning?.levels?.length ? meta.reasoning.levels.join(", ") : "not set";
-      return `<div class="provider-model-row"><span class="provider-model-name">${esc(id)}</span><span class="provider-model-cap"><span class="${meta.imageInput ? "cap-on" : "cap-off"}">Images ${meta.imageInput ? "✓" : "—"}</span> · Reasoning: ${esc(levels)}</span></div>`;
+      const levels = meta.thinking === true ? meta.reasoning?.levels?.length ? meta.reasoning.levels.join(", ") : "allowed, levels not set" : "none";
+      return `<div class="provider-model-row"><span class="provider-model-name">${esc(id)}</span><span class="provider-model-cap"><span class="${meta.imageInput ? "cap-on" : "cap-off"}">Images ${meta.imageInput ? "✓" : "—"}</span> · Thinking: ${esc(levels)}</span></div>`;
     }).join("") : '<span class="muted">No models yet</span>';
     return `<tr>
       <td><div class="provider-identity"><span class="provider-name">${esc(p.name)}</span><code class="provider-slug">${esc(p.slug)}</code><span class="provider-url">${esc(p.baseUrl)}</span><span class="provider-key">Key ${esc(p.apiKeyMasked || "—")}</span></div></td>
@@ -179,7 +192,7 @@ function resetProviderForm() {
 $("p-cancel").addEventListener("click", resetProviderForm);
 $("p-name").addEventListener("input", () => { if (!$("p-id").value) $("p-slug").value = slugify($("p-name").value); });
 $("p-models").addEventListener("input", renderModelMetaEditor);
-$("p-model-meta").addEventListener("change", readModelMeta);
+$("p-model-meta").addEventListener("change", (e) => { readModelMeta(); if (e.target.matches("[data-meta-thinking]")) renderModelMetaEditor(); });
 renderModelMetaEditor();
 
 $("p-fetch").addEventListener("click", async () => {
@@ -192,7 +205,7 @@ $("p-fetch").addEventListener("click", async () => {
     const r = await apiJson("/api/providers/fetch-models", "POST", body);
     $("p-models").value = r.models.map(modelIdOf).join("\n");
     draftModelMeta.clear();
-    r.models.forEach((m) => { const id = modelIdOf(m); draftModelMeta.set(id, { modelId: id, imageInput: null, reasoning: null, defaultEffort: "provider" }); });
+    r.models.forEach((m) => { const id = modelIdOf(m); draftModelMeta.set(id, { modelId: id, imageInput: null, thinking: null, reasoning: null, defaultEffort: "provider" }); });
     renderModelMetaEditor();
     $("p-msg").textContent = r.models.length ? `Found ${r.models.length} models. Set Images, reasoning levels, and defaults manually below.` : "Provider returned no models — type them manually, one per line.";
   } catch (e) { $("p-msg").textContent = "Could not fetch: " + e.message + " (you can still type model names manually)"; }
@@ -284,7 +297,7 @@ function renderGuide() {
         const id = modelIdOf(m);
         const meta = metaFromProvider(pr, id);
         const entry = { id: `${pr.slug}/${id}`, input: meta.imageInput ? ["text", "image"] : ["text"] };
-        if (meta.reasoning?.levels?.length) {
+        if (meta.thinking === true && meta.reasoning?.levels?.length) {
           entry.reasoning = true;
           const supported = new Set(meta.reasoning.levels);
           entry.thinkingLevelMap = Object.fromEntries(["off", ...REASONING_LEVELS].map((level) => [level, level === "off" ? null : supported.has(level) ? level : null]));

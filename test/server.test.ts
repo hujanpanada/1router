@@ -79,12 +79,13 @@ before(async () => {
   const p1 = db.createProvider({ slug: "fakeopenai", name: "Fake OpenAI", baseUrl: up, api: "openai-completions", apiKey: "upstream-secret", models: ["gpt-x"] });
   db.updateProvider(p1.id, {
     modelMeta: [
-      { modelId: "gpt-x", imageInput: true, reasoning: { levels: ["low", "medium", "high"], defaultLevel: "provider" } },
+      { modelId: "gpt-x", imageInput: true, thinking: true, reasoning: { levels: ["low", "medium", "high"], defaultLevel: "provider" } },
     ],
   });
-  db.createProvider({ slug: "fakeresp", name: "Fake Resp", baseUrl: up, api: "openai-responses", apiKey: "upstream-secret", models: ["gpt-r"] });
+  const p2 = db.createProvider({ slug: "fakeresp", name: "Fake Resp", baseUrl: up, api: "openai-responses", apiKey: "upstream-secret", models: ["gpt-r"] });
+  db.updateProvider(p2.id, { modelMeta: [{ modelId: "gpt-r", imageInput: null, thinking: true, reasoning: null }] });
   const p3 = db.createProvider({ slug: "fakeanthropic", name: "Fake Anthropic", baseUrl: up, api: "anthropic-messages", apiKey: "upstream-secret", models: ["claude-x"] });
-  db.updateProvider(p3.id, { modelMeta: [{ modelId: "claude-x", imageInput: false, reasoning: null }] });
+  db.updateProvider(p3.id, { modelMeta: [{ modelId: "claude-x", imageInput: false, thinking: true, reasoning: null }] });
   app = createServer({ db, proxyTimeoutMs: 2000, maxResponseBytes: 100_000, loginWindowMs: 1200, loginMaxFailures: 10 });
   await new Promise<void>((r) => app.listen(0, "127.0.0.1", r));
   base = `http://127.0.0.1:${(app.address() as AddressInfo).port}`;
@@ -220,9 +221,10 @@ test("fetch-models proxies upstream /models with the given credentials", async (
 test("providers API round-trips model guards in the update request", async () => {
   const created = (await (await admin("/api/providers", {
     method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ slug: "guardapi", name: "Guard API", baseUrl: lastUpstreamUrl(), api: "openai-completions", apiKey: "k", models: [{ id: "gpt-x", imageInput: true, reasoning: { levels: ["low", "high"] }, defaultEffort: "provider" }] }),
+    body: JSON.stringify({ slug: "guardapi", name: "Guard API", baseUrl: lastUpstreamUrl(), api: "openai-completions", apiKey: "k", models: [{ id: "gpt-x", imageInput: true, thinking: true, reasoning: { levels: ["low", "high"] }, defaultEffort: "provider" }] }),
   })).json()) as any;
   assert.equal(created.models[0].imageInput, true);
+  assert.equal(created.models[0].thinking, true);
   assert.deepEqual(created.models[0].reasoning.levels, ["low", "high"]);
   await admin(`/api/providers/${created.id}`, { method: "DELETE" });
 });
@@ -235,6 +237,24 @@ test("test-request can try a selected thinking level", async () => {
   assert.equal(result.ok, true);
   assert.equal(lastUpstream.body.reasoning_effort, "xhigh");
   assert.equal(db.recentEvents(1)[0].effort, "xhigh");
+});
+
+test("thinking disabled strips requested effort before forwarding", async () => {
+  db.updateProvider(db.listProviders().find((p) => p.slug === "fakeopenai")!.id, {
+    modelMeta: [{ modelId: "gpt-x", imageInput: true, thinking: false, reasoning: { levels: ["low", "high"], defaultLevel: "low" } }],
+  });
+  const res = await post("/v1/chat/completions", { model: "fakeopenai/gpt-x", messages: [], reasoning_effort: "high" });
+  assert.equal(res.status, 200);
+  assert.equal(lastUpstream.body.reasoning_effort, undefined);
+  assert.equal(db.recentEvents(1)[0].effort, "none");
+  const listed = (await (await admin("/api/providers")).json()) as any[];
+  const model = listed.find((p) => p.slug === "fakeopenai").models[0];
+  assert.equal(model.thinking, false);
+  assert.equal(model.reasoning, null);
+  // Restore for later tests in this file.
+  db.updateProvider(db.listProviders().find((p) => p.slug === "fakeopenai")!.id, {
+    modelMeta: [{ modelId: "gpt-x", imageInput: true, thinking: true, reasoning: { levels: ["low", "medium", "high"], defaultLevel: "provider" } }],
+  });
 });
 
 test("provider API exposes only explicit guards", async () => {

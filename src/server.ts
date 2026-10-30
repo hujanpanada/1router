@@ -109,11 +109,26 @@ export function publicProvider(p: ReturnType<Db["listProviders"]>[number]) {
     api: p.api,
     models: p.models.map((m: ModelMeta) => {
       const cap = capabilityFor(p.slug, m.modelId, m);
-      return { modelId: m.modelId, id: m.modelId, imageInput: m.imageInput, reasoning: cap.reasoning, defaultEffort: cap.defaultEffort };
+      return { modelId: m.modelId, id: m.modelId, imageInput: m.imageInput, thinking: m.thinking, reasoning: cap.reasoning, defaultEffort: cap.defaultEffort };
     }),
     apiKeyMasked: maskKey(p.apiKey),
     createdAt: p.createdAt,
   };
+}
+
+function stripThinking(api: ApiType, body: any): any {
+  const out = { ...body };
+  delete out.reasoning;
+  delete out.reasoning_effort;
+  if (api === "anthropic-messages") {
+    delete out.thinking;
+    if (out.output_config && typeof out.output_config === "object") {
+      const outputConfig = { ...out.output_config };
+      delete outputConfig.effort;
+      out.output_config = outputConfig;
+    }
+  }
+  return out;
 }
 
 function requestEffort(api: ApiType, body: any): string {
@@ -195,11 +210,13 @@ export function createServer(opts: ServerOptions): http.Server {
       return json(res, 400, errBody(`Model ${body.model} is not marked as image-capable in 1Router. Enable Images for it in Providers first — 1Router blocks image input unless explicitly allowed.`));
     }
 
-    const streaming = body.stream === true;
+    const thinkingDisabled = target.thinking !== true;
+    const effectiveBody = thinkingDisabled ? stripThinking(target.api, body) : body;
+    const streaming = effectiveBody.stream === true;
     const upstreamBody = target.api === "openai-completions" && streaming
-      ? { ...body, model: target.modelId, stream_options: { ...(body.stream_options ?? {}), include_usage: true } }
-      : { ...body, model: target.modelId };
-    const effort = requestEffort(target.api, body);
+      ? { ...effectiveBody, model: target.modelId, stream_options: { ...(effectiveBody.stream_options ?? {}), include_usage: true } }
+      : { ...effectiveBody, model: target.modelId };
+    const effort = thinkingDisabled ? "none" : requestEffort(target.api, effectiveBody);
     const started = Date.now();
     let recorded = false;
 
@@ -336,7 +353,7 @@ export function createServer(opts: ServerOptions): http.Server {
       const models = list.map((m: any) => {
         const modelId = typeof m === "string" ? m : m.id ?? m.name;
         if (!modelId) return null;
-        return { modelId, id: modelId, imageInput: null, reasoning: null };
+        return { modelId, id: modelId, imageInput: null, thinking: null, reasoning: null };
       }).filter(Boolean);
       return json(res, 200, { models });
     } catch (e) {
@@ -425,7 +442,8 @@ export function createServer(opts: ServerOptions): http.Server {
         const meta: ModelMeta = {
           modelId: id,
           imageInput: m.imageInput === true ? true : m.imageInput === false ? false : null,
-          reasoning: levels ? { levels, defaultLevel: m.defaultEffort ?? m.reasoning?.defaultLevel ?? "provider", source: "manual" } : null,
+          thinking: m.thinking === true ? true : m.thinking === false ? false : null,
+          reasoning: m.thinking === true && levels ? { levels, defaultLevel: m.defaultEffort ?? m.reasoning?.defaultLevel ?? "provider", source: "manual" } : null,
         };
         const existing = modelMeta.findIndex((x) => x.modelId === id);
         if (existing >= 0) modelMeta[existing] = meta; else modelMeta.push(meta);
