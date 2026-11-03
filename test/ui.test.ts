@@ -135,3 +135,9 @@ test("How to Use provides a model search filter in capabilities panel", () => {
   assert.match(js, /cap-filter/);
   assert.match(css, /\.meta-filtered-out/);
 });
+
+test("curl in How to Use reacts to thinking level and image options", () => {
+  assert.match(js, /g-image.*addEventListener\("change",\s*renderGuide\)/);
+  assert.match(js, /g-thinking.*addEventListener\("change",\s*renderGuide\)/);
+  assert.match(js, /reasoning_effort/);
+});

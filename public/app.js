@@ -316,10 +316,69 @@ function renderGuideModelOptions() {
   if (current) sel.value = current;
   renderGuide();
 }
-function testBody(apiType, fullId) {
-  if (apiType === "anthropic-messages") return { model: fullId, max_tokens: 50, messages: [{ role: "user", content: "Say hi in 3 words" }] };
-  if (apiType === "openai-responses") return { model: fullId, input: "Say hi in 3 words" };
-  return { model: fullId, messages: [{ role: "user", content: "Say hi in 3 words" }] };
+function testBody(apiType, fullId, opts = {}) {
+  const tryImage = opts.tryImage === true;
+  const thinkingLevel = opts.thinkingLevel || null;
+  const testPng = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=";
+  const imagePrompt = "What color is this image? Answer with one word.";
+
+  if (tryImage) {
+    if (apiType === "anthropic-messages") {
+      return {
+        model: fullId,
+        max_tokens: 32,
+        messages: [{
+          role: "user",
+          content: [
+            { type: "image", source: { type: "base64", media_type: "image/png", data: testPng } },
+            { type: "text", text: imagePrompt },
+          ],
+        }],
+      };
+    }
+    if (apiType === "openai-responses") {
+      return {
+        model: fullId,
+        input: [
+          {
+            role: "user",
+            content: [
+              { type: "input_text", text: imagePrompt },
+              { type: "input_image", image_url: `data:image/png;base64,${testPng}` },
+            ],
+          },
+        ],
+      };
+    }
+    return {
+      model: fullId,
+      messages: [{
+        role: "user",
+        content: [
+          { type: "text", text: imagePrompt },
+          { type: "image_url", image_url: { url: `data:image/png;base64,${testPng}` } },
+        ],
+      }],
+    };
+  }
+
+  if (apiType === "anthropic-messages") {
+    const body = {
+      model: fullId,
+      max_tokens: thinkingLevel ? 1024 : 50,
+      messages: [{ role: "user", content: "Say hi in 3 words" }],
+    };
+    if (thinkingLevel) body.thinking = { type: "enabled", budget_tokens: 1024 };
+    return body;
+  }
+  if (apiType === "openai-responses") {
+    const body = { model: fullId, input: "Say hi in 3 words" };
+    if (thinkingLevel) body.reasoning = { effort: thinkingLevel };
+    return body;
+  }
+  const body = { model: fullId, messages: [{ role: "user", content: "Say hi in 3 words" }] };
+  if (thinkingLevel) body.reasoning_effort = thinkingLevel;
+  return body;
 }
 function renderGuide() {
   if (!$("g-base")) return;
@@ -329,6 +388,9 @@ function renderGuide() {
   const p = providerOfModel(fullId);
   const apiType = p?.api || "openai-completions";
   const key = $("g-key").value.trim() || "sk-1r-YOUR_KEY";
+  const tryImage = $("g-image")?.value === "test";
+  if ($("g-thinking")) $("g-thinking").disabled = tryImage;
+  const thinkingLevel = tryImage ? "" : ($("g-thinking")?.value || "");
   $("g-model-example").textContent = fullId;
   const isAnthropic = apiType === "anthropic-messages";
   $("g-curl").textContent =
@@ -336,7 +398,7 @@ function renderGuide() {
     (isAnthropic
       ? `  -H "x-api-key: ${key}" -H "anthropic-version: 2023-06-01" \\\n`
       : `  -H "Authorization: Bearer ${key}" \\\n`) +
-    `  -H "content-type: application/json" \\\n  -d '${JSON.stringify(testBody(apiType, fullId))}'`;
+    `  -H "content-type: application/json" \\\n  -d '${JSON.stringify(testBody(apiType, fullId, { tryImage, thinkingLevel }))}'`;
   const piProviders = {};
   for (const pr of providers) {
     piProviders["1router-" + pr.slug] = {
@@ -358,6 +420,8 @@ function renderGuide() {
 }
 $("g-model").addEventListener("change", renderGuide);
 $("g-key").addEventListener("input", renderGuide);
+$("g-image")?.addEventListener("change", renderGuide);
+$("g-thinking")?.addEventListener("change", renderGuide);
 $("g-test").addEventListener("click", async () => {
   const out = $("g-test-result");
   const fullId = $("g-model").value;
