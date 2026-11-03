@@ -10,6 +10,7 @@ const fmtCompact = (n) => {
 const REASONING_LEVELS = ["minimal", "low", "medium", "high", "xhigh", "max"];
 const draftModelMeta = new Map();
 let providers = [];
+let appTimezone = "Asia/Kuala_Lumpur";
 
 async function api(path, init) {
   const res = await fetch(path, init);
@@ -92,7 +93,7 @@ async function loadRequests() {
   const limit = $("req-limit")?.value ?? "50";
   const reqs = await api(`/api/requests?limit=${limit}`);
   $("req-body").innerHTML = reqs.map((e) =>
-    `<tr><td>${new Date(e.ts).toLocaleString()}</td><td>${esc(e.provider)}/${esc(e.model)}${e.streaming ? " (stream)" : ""}</td><td class="num">${fmt(e.input)}</td><td class="num">${fmt(e.output)}</td><td class="num">${fmt(e.cacheRead)}/${fmt(e.cacheWrite)}</td><td>${esc(e.effort || "provider")}</td><td class="num">${statusBadge(e.httpStatus, e.usageMissing)}</td><td class="num">${e.latencyMs} ms</td></tr>`
+    `<tr><td>${new Date(e.ts).toLocaleString("en-US", { timeZone: appTimezone })}</td><td>${esc(e.provider)}/${esc(e.model)}${e.streaming ? " (stream)" : ""}</td><td class="num">${fmt(e.input)}</td><td class="num">${fmt(e.output)}</td><td class="num">${fmt(e.cacheRead)}/${fmt(e.cacheWrite)}</td><td>${esc(e.effort || "provider")}</td><td class="num">${statusBadge(e.httpStatus, e.usageMissing)}</td><td class="num">${e.latencyMs} ms</td></tr>`
   ).join("") || '<tr><td colspan="8" class="muted">—</td></tr>';
 }
 async function loadStats() {
@@ -463,6 +464,26 @@ $("export-db").addEventListener("click", () => {
 });
 
 // ---------- settings / logout ----------
+$("tz-form")?.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const btn = $("tz-save");
+  setBusy(btn, true, "Saving…");
+  try {
+    const res = await apiJson("/api/settings", "POST", { timezone: $("tz-input").value.trim() });
+    appTimezone = res.timezone || $("tz-input").value.trim();
+    $("tz-msg").textContent = `✓ Timezone saved: ${appTimezone}`;
+    await loadStats();
+  } catch (err) {
+    $("tz-msg").textContent = "Error: " + err.message;
+  } finally {
+    setBusy(btn, false);
+  }
+});
+$("tz-detect")?.addEventListener("click", () => {
+  const detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  if (detected && $("tz-input")) $("tz-input").value = detected;
+});
+
 $("pw-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   try {
@@ -478,6 +499,10 @@ function showErr(e) { $("status").textContent = "Error: " + e.message; }
   try {
     const me = await api("/api/me");
     $("default-banner").hidden = !me.passwordIsDefault;
+    if (me.timezone) {
+      appTimezone = me.timezone;
+      if ($("tz-input")) $("tz-input").value = me.timezone;
+    }
     await loadProviders();
     await loadKeys();
     await loadStats();

@@ -161,6 +161,25 @@ test("change password: old stops working, new works, default flag clears", async
   assert.equal(me.passwordIsDefault, false);
 });
 
+test("timezone settings: defaults to Asia/Kuala_Lumpur, can be updated via /api/settings", async () => {
+  const me = (await (await admin("/api/me")).json()) as any;
+  assert.equal(me.timezone, "Asia/Kuala_Lumpur");
+
+  const settings = (await (await admin("/api/settings")).json()) as any;
+  assert.equal(settings.timezone, "Asia/Kuala_Lumpur");
+
+  const bad = await admin("/api/settings", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ timezone: "Invalid/Zone" }) });
+  assert.equal(bad.status, 400);
+
+  const updated = await admin("/api/settings", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ timezone: "America/New_York" }) });
+  assert.equal(updated.status, 200);
+  const updatedData = (await updated.json()) as any;
+  assert.equal(updatedData.timezone, "America/New_York");
+
+  const meAfter = (await (await admin("/api/me")).json()) as any;
+  assert.equal(meAfter.timezone, "America/New_York");
+});
+
 test("dashboard responses carry security headers", async () => {
   const home = await fetch(base + "/", { headers: { cookie } });
   assert.match(home.headers.get("content-security-policy") ?? "", /default-src 'self'/);

@@ -269,6 +269,39 @@ test("daily stats uses indexed timestamp range and respects custom now", () => {
   assert.equal(rows[0].requests, 1);
 });
 
+test("timezone setting defaults to Asia/Kuala_Lumpur and can be updated", () => {
+  const db = createDb(":memory:");
+  assert.equal(db.getTimezone(), "Asia/Kuala_Lumpur");
+  db.setTimezone("America/New_York");
+  assert.equal(db.getTimezone(), "America/New_York");
+  assert.throws(() => db.setTimezone("Invalid/Timezone"), /Invalid timezone/);
+});
+
+test("stats bucketing and Today filter respect configured timezone for GMT+8 and behind UTC", () => {
+  // 2026-11-03 23:30:00 UTC
+  // In GMT+8 (Asia/Kuala_Lumpur): 2026-11-04 07:30:00
+  // In UTC-5 (America/New_York):  2026-11-03 18:30:00
+  const fixedTs = Date.UTC(2026, 10, 3, 23, 30, 0);
+  const db = createDb(":memory:", { now: () => fixedTs });
+  const k = db.createKey("user1");
+  db.insertEvent(ev({ clientKeyId: k.id, ts: fixedTs }));
+
+  // Default timezone is Asia/Kuala_Lumpur (GMT+8) -> should be 2026-11-04
+  const dailyKL = db.stats({ period: "daily", groupBy: "provider" });
+  assert.equal(dailyKL.length, 1);
+  assert.equal(dailyKL[0].period, "2026-11-04");
+
+  // Switch to America/New_York (UTC-5) -> should be 2026-11-03
+  db.setTimezone("America/New_York");
+  const dailyNY = db.stats({ period: "daily", groupBy: "provider" });
+  assert.equal(dailyNY.length, 1);
+  assert.equal(dailyNY[0].period, "2026-11-03");
+
+  // Verify monthly bucketing in NY
+  const monthlyNY = db.stats({ period: "monthly", groupBy: "provider" });
+  assert.equal(monthlyNY[0].period, "2026-11");
+});
+
 test("serialize produces a restorable backup without sessions", async () => {
   const { writeFileSync, rmSync } = await import("node:fs");
   const db = createDb(":memory:");
