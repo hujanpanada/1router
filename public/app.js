@@ -2,6 +2,11 @@
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const fmt = (n) => n.toLocaleString("en-US");
+const fmtCompact = (n) => {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(2).replace(/\.00$/, "").replace(/(\.[1-9])0$/, "$1") + "M";
+  if (n >= 10_000) return (n / 1_000).toFixed(1).replace(/\.0$/, "") + "k";
+  return fmt(n);
+};
 const REASONING_LEVELS = ["minimal", "low", "medium", "high", "xhigh", "max"];
 const draftModelMeta = new Map();
 let providers = [];
@@ -51,7 +56,9 @@ document.querySelectorAll("button.tab").forEach((b) => b.addEventListener("click
   document.querySelectorAll("button.tab").forEach((x) => x.classList.toggle("active", x === b));
   for (const t of ["dashboard", "providers", "keys", "guide", "settings"]) $("tab-" + t).hidden = t !== b.dataset.tab;
   if (b.dataset.tab === "dashboard") loadStats();
-  if (b.dataset.tab === "guide") renderGuide();
+  if (b.dataset.tab === "providers") loadProviders();
+  if (b.dataset.tab === "keys") loadKeys();
+  if (b.dataset.tab === "guide") { renderGuide(); renderCapabilityProviderOptions(); }
 }));
 
 // ---------- dashboard ----------
@@ -68,11 +75,16 @@ function formatPeriod(value, period) {
   const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   return `${iso(start)} – ${iso(end)}`;
 }
+function statusBadge(code, missing) {
+  const cls = code >= 200 && code < 300 ? "status-ok" : "status-err";
+  const warn = missing ? ' <span class="status-badge status-warn" title="Provider reported no token usage">no usage</span>' : "";
+  return `<span class="status-badge ${cls}">${code}</span>${warn}`;
+}
 async function loadRequests() {
   const limit = $("req-limit")?.value ?? "50";
   const reqs = await api(`/api/requests?limit=${limit}`);
   $("req-body").innerHTML = reqs.map((e) =>
-    `<tr><td>${new Date(e.ts).toLocaleString()}</td><td>${esc(e.provider)}/${esc(e.model)}${e.streaming ? " (stream)" : ""}</td><td class="num">${fmt(e.input)}</td><td class="num">${fmt(e.output)}</td><td class="num">${fmt(e.cacheRead)}/${fmt(e.cacheWrite)}</td><td>${esc(e.effort || "provider")}</td><td class="num">${e.httpStatus}${e.usageMissing ? " (no usage)" : ""}</td><td class="num">${e.latencyMs} ms</td></tr>`
+    `<tr><td>${new Date(e.ts).toLocaleString()}</td><td>${esc(e.provider)}/${esc(e.model)}${e.streaming ? " (stream)" : ""}</td><td class="num">${fmt(e.input)}</td><td class="num">${fmt(e.output)}</td><td class="num">${fmt(e.cacheRead)}/${fmt(e.cacheWrite)}</td><td>${esc(e.effort || "provider")}</td><td class="num">${statusBadge(e.httpStatus, e.usageMissing)}</td><td class="num">${e.latencyMs} ms</td></tr>`
   ).join("") || '<tr><td colspan="8" class="muted">—</td></tr>';
 }
 async function loadStats() {
@@ -80,8 +92,14 @@ async function loadStats() {
   $("th-group").textContent = { provider: "Provider", key: "API key", model: "Model" }[groupBy];
   const rows = await api(`/api/stats?period=${period}&groupBy=${groupBy}`);
   const t = rows.reduce((a, r) => ({ req: a.req + r.requests, i: a.i + r.input, o: a.o + r.output, cr: a.cr + r.cacheRead, cw: a.cw + r.cacheWrite }), { req: 0, i: 0, o: 0, cr: 0, cw: 0 });
-  $("c-req").textContent = fmt(t.req); $("c-in").textContent = fmt(t.i); $("c-out").textContent = fmt(t.o);
-  $("c-cache").textContent = fmt(t.cr) + " / " + fmt(t.cw);
+  $("c-req").textContent = fmt(t.req);
+  $("c-req").title = fmt(t.req);
+  $("c-in").textContent = fmtCompact(t.i);
+  $("c-in").title = fmt(t.i);
+  $("c-out").textContent = fmtCompact(t.o);
+  $("c-out").title = fmt(t.o);
+  $("c-cache").textContent = `${fmtCompact(t.cr)} / ${fmtCompact(t.cw)}`;
+  $("c-cache").title = `${fmt(t.cr)} / ${fmt(t.cw)}`;
   $("stats-body").innerHTML = rows.map((r) =>
     `<tr><td>${esc(formatPeriod(r.period, period))}</td><td>${esc(r.group)}</td><td class="num">${fmt(r.requests)}</td><td class="num">${fmt(r.input)}</td><td class="num">${fmt(r.output)}</td><td class="num">${fmt(r.cacheRead)}</td><td class="num">${fmt(r.cacheWrite)}</td></tr>`
   ).join("") || '<tr><td colspan="7" class="muted">No data yet — add a provider, create a key, and make a request.</td></tr>';
@@ -101,6 +119,13 @@ function metaFromProvider(p, modelId) {
   return { modelId, imageInput: m.imageInput ?? null, thinking: m.thinking ?? null, reasoning: m.reasoning ?? null, defaultEffort: m.defaultEffort ?? m.reasoning?.defaultLevel ?? "provider" };
 }
 function currentCapabilityProvider() { return providers.find((p) => p.id === Number($("cap-provider")?.value)); }
+function filterModelMeta() {
+  const q = $("cap-filter")?.value.trim().toLowerCase() ?? "";
+  document.querySelectorAll("[data-model-meta]").forEach((box) => {
+    const id = (box.getAttribute("data-model-meta") || "").toLowerCase();
+    box.classList.toggle("meta-filtered-out", Boolean(q && !id.includes(q)));
+  });
+}
 function renderModelMetaEditor() {
   const host = $("p-model-meta");
   if (!host) return;
@@ -127,6 +152,7 @@ function renderModelMetaEditor() {
       </div>
     </div>`;
   }).join("");
+  filterModelMeta();
 }
 function parseModelList() { return $("p-models").value.split(/[\n,]/).map((s) => s.trim()).filter(Boolean).filter((m, i, a) => a.indexOf(m) === i); }
 function syncThinkingControls(box) {
@@ -195,6 +221,7 @@ $("p-cancel").addEventListener("click", resetProviderForm);
 $("p-name").addEventListener("input", () => { if (!$("p-id").value) $("p-slug").value = slugify($("p-name").value); });
 $("p-model-meta").addEventListener("change", (e) => { readModelMeta(); if (e.target.matches("[data-meta-thinking]")) renderModelMetaEditor(); });
 $("cap-provider").addEventListener("change", () => { draftModelMeta.clear(); renderModelMetaEditor(); });
+$("cap-filter")?.addEventListener("input", filterModelMeta);
 $("cap-save").addEventListener("click", async () => {
   const provider = currentCapabilityProvider();
   if (!provider) return;
@@ -267,6 +294,17 @@ $("key-form").addEventListener("submit", async (e) => {
   } finally { setBusy(btn, false); }
 });
 $("copy-new-key").addEventListener("click", async (e) => { await navigator.clipboard.writeText($("new-key-value").textContent); showCopied(e.currentTarget); });
+$("use-new-key")?.addEventListener("click", () => {
+  const key = $("new-key-value")?.textContent;
+  if (!key) return;
+  document.querySelector('button.tab[data-tab="guide"]')?.click();
+  const keyInput = $("g-key");
+  if (keyInput) {
+    keyInput.value = key;
+    renderGuide();
+    keyInput.focus();
+  }
+});
 
 // ---------- guide ----------
 const ENDPOINT = { "openai-completions": "/chat/completions", "openai-responses": "/responses", "anthropic-messages": "/messages" };

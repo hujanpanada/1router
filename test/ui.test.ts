@@ -112,3 +112,26 @@ test("Settings offers SQLite export; README keeps its screenshot", () => {
   assert.match(html, /Download SQLite backup/);
   assert.ok(readme.includes("images/1router-dashboard.png"));
 });
+
+test("recent requests table displays colored status badges", () => {
+  assert.match(js, /status-badge/);
+  assert.match(css, /\.status-badge/);
+  assert.match(css, /\.status-ok/);
+  assert.match(css, /\.status-err/);
+});
+
+test("dashboard cards use compact token numbers with full title tooltip", () => {
+  assert.match(js, /fmtCompact/);
+  assert.match(js, /title\s*=/);
+});
+
+test("API keys tab offers using new key in Try-it-now", () => {
+  assert.match(html, /id="use-new-key"/);
+  assert.match(js, /use-new-key/);
+});
+
+test("How to Use provides a model search filter in capabilities panel", () => {
+  assert.match(html, /id="cap-filter"/);
+  assert.match(js, /cap-filter/);
+  assert.match(css, /\.meta-filtered-out/);
+});

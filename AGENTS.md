@@ -104,8 +104,8 @@ npm run key:create -- <name>   # optional CLI alternative to the UI
 
 - Small, focused commits with imperative subjects (e.g. `feat: …`,
   `fix: …`, `docs: …`).
-- **Every commit message must end with the co-author trailer:**
+- **Every commit message must end with the co-author trailer reflecting the AI model that contributed to it:**
 
   ```
-  Co-Authored-By: Muse Wonder
+  Co-Authored-By: <Model Name>
   ```

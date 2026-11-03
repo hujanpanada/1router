@@ -146,6 +146,15 @@ a.btn:active { transform: translateY(1px) scale(.98); }
 .table-text { min-width: 560px; }
 .table-text td:first-child { white-space: nowrap; width: 220px; }
 
+/* ---------- status badges ---------- */
+.status-badge {
+  display: inline-block; padding: .15rem .45rem; border-radius: 6px;
+  font-size: .8rem; font-weight: 700; line-height: 1.2;
+}
+.status-ok { background: rgb(63 158 77 / .18); color: #8fd79a; border: 1px solid rgb(63 158 77 / .35); }
+.status-err { background: rgb(217 83 79 / .18); color: #ffaaa6; border: 1px solid rgb(217 83 79 / .35); }
+.status-warn { background: rgb(217 180 79 / .18); color: #ffe08a; border: 1px solid rgb(217 180 79 / .35); margin-left: .35rem; font-size: .75rem; font-weight: 600; }
+
 /* ---------- providers table ---------- */
 .providers-table { min-width: 980px; table-layout: fixed; }
 .providers-table .col-provider { width: 250px; }
@@ -201,6 +210,9 @@ a.btn:active { transform: translateY(1px) scale(.98); }
 .capability-note { margin: 0 0 1rem; line-height: 1.5; }
 .capability-panel { padding: 1.5rem; }
 .capability-panel .field { margin-bottom: 1rem; }
+.capability-toolbar { display: flex; align-items: end; gap: .9rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.capability-toolbar .field { margin-bottom: 0; }
+.meta-filtered-out { display: none !important; }
 
 /* ---------- model capability editor ---------- */
 .model-meta-list { display: flex; flex-direction: column; gap: .85rem; margin-top: 1rem; }
