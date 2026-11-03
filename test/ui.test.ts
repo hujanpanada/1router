@@ -153,3 +153,17 @@ test("Settings page has timezone configuration with default GMT+8 Asia/Kuala_Lum
   assert.match(js, /tz-input/);
   assert.match(js, /tz-save/);
 });
+
+test("Precision Telemetry theme and exact control sizing are defined in stylesheet", () => {
+  // Precision dark graphite palette and telemetry emerald accent
+  assert.match(css, /--bg:\s*#0[b-c]0[c-e]0[e-f]/i);
+  assert.match(css, /--accent:\s*#10b981/i);
+  assert.match(css, /--control-h:\s*36px/);
+  // Custom dropdown precision styling (appearance none + svg chevron)
+  assert.match(css, /select\s*\{[^}]*appearance:\s*none/);
+  // Table numeric alignment and monospace telemetry time
+  assert.match(css, /\.num\s*\{[^}]*tabular-nums/);
+  assert.match(css, /\.cell-time/);
+  assert.match(js, /cell-time/);
+});
+

@@ -93,7 +93,7 @@ async function loadRequests() {
   const limit = $("req-limit")?.value ?? "50";
   const reqs = await api(`/api/requests?limit=${limit}`);
   $("req-body").innerHTML = reqs.map((e) =>
-    `<tr><td>${new Date(e.ts).toLocaleString("en-US", { timeZone: appTimezone })}</td><td>${esc(e.provider)}/${esc(e.model)}${e.streaming ? " (stream)" : ""}</td><td class="num">${fmt(e.input)}</td><td class="num">${fmt(e.output)}</td><td class="num">${fmt(e.cacheRead)}/${fmt(e.cacheWrite)}</td><td>${esc(e.effort || "provider")}</td><td class="num">${statusBadge(e.httpStatus, e.usageMissing)}</td><td class="num">${e.latencyMs} ms</td></tr>`
+    `<tr><td class="cell-time">${new Date(e.ts).toLocaleString("en-US", { timeZone: appTimezone })}</td><td>${esc(e.provider)}/${esc(e.model)}${e.streaming ? " (stream)" : ""}</td><td class="num">${fmt(e.input)}</td><td class="num">${fmt(e.output)}</td><td class="num">${fmt(e.cacheRead)}/${fmt(e.cacheWrite)}</td><td>${esc(e.effort || "provider")}</td><td class="num">${statusBadge(e.httpStatus, e.usageMissing)}</td><td class="num">${e.latencyMs} ms</td></tr>`
   ).join("") || '<tr><td colspan="8" class="muted">—</td></tr>';
 }
 async function loadStats() {
