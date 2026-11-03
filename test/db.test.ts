@@ -252,6 +252,23 @@ test("stats grouped by client key and by model; periods bucket correctly", () =>
   ]);
 });
 
+test("daily stats uses indexed timestamp range and respects custom now", () => {
+  const customNow = new Date(2026, 5, 10, 14, 0, 0).getTime();
+  const db = createDb(":memory:", { now: () => customNow });
+  const k = db.createKey("test-user");
+  const todayMorning = new Date(2026, 5, 10, 8, 0, 0).getTime();
+  const yesterdayEvening = new Date(2026, 5, 9, 23, 59, 0).getTime();
+  const tomorrowMorning = new Date(2026, 5, 11, 1, 0, 0).getTime();
+  db.insertEvent(ev({ clientKeyId: k.id, ts: todayMorning }));
+  db.insertEvent(ev({ clientKeyId: k.id, ts: yesterdayEvening }));
+  db.insertEvent(ev({ clientKeyId: k.id, ts: tomorrowMorning }));
+
+  const rows = db.stats({ period: "daily", groupBy: "provider" });
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].period, "2026-06-10");
+  assert.equal(rows[0].requests, 1);
+});
+
 test("serialize produces a restorable backup without sessions", async () => {
   const { writeFileSync, rmSync } = await import("node:fs");
   const db = createDb(":memory:");

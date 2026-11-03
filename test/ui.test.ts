@@ -141,3 +141,7 @@ test("curl in How to Use reacts to thinking level and image options", () => {
   assert.match(js, /g-thinking.*addEventListener\("change",\s*renderGuide\)/);
   assert.match(js, /reasoning_effort/);
 });
+
+test("tab switching triggers lifecycle refresh for providers, keys, and guide", () => {
+  assert.match(js, /b\.dataset\.tab === "guide"[^}]*renderGuideModelOptions\(\)/s);
+});

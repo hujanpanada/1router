@@ -52,13 +52,21 @@ function showCopied(btn) {
 }
 
 // ---------- tabs ----------
-document.querySelectorAll("button.tab").forEach((b) => b.addEventListener("click", () => {
+document.querySelectorAll("button.tab").forEach((b) => b.addEventListener("click", async () => {
   document.querySelectorAll("button.tab").forEach((x) => x.classList.toggle("active", x === b));
   for (const t of ["dashboard", "providers", "keys", "guide", "settings"]) $("tab-" + t).hidden = t !== b.dataset.tab;
-  if (b.dataset.tab === "dashboard") loadStats();
-  if (b.dataset.tab === "providers") loadProviders();
-  if (b.dataset.tab === "keys") loadKeys();
-  if (b.dataset.tab === "guide") { renderGuide(); renderCapabilityProviderOptions(); }
+  try {
+    if (b.dataset.tab === "dashboard") await loadStats();
+    if (b.dataset.tab === "providers") await loadProviders();
+    if (b.dataset.tab === "keys") await loadKeys();
+    if (b.dataset.tab === "guide") {
+      await loadProviders();
+      renderGuideModelOptions();
+      renderCapabilityProviderOptions();
+    }
+  } catch (err) {
+    showErr(err);
+  }
 }));
 
 // ---------- dashboard ----------
