@@ -145,3 +145,11 @@ test("curl in How to Use reacts to thinking level and image options", () => {
 test("tab switching triggers lifecycle refresh for providers, keys, and guide", () => {
   assert.match(js, /b\.dataset\.tab === "guide"[^}]*renderGuideModelOptions\(\)/s);
 });
+
+test("Settings page has timezone configuration with default GMT+8 Asia/Kuala_Lumpur", () => {
+  assert.match(html, /id="tz-input"/);
+  assert.match(html, /id="tz-list"/);
+  assert.match(html, /Asia\/Kuala_Lumpur/);
+  assert.match(js, /tz-input/);
+  assert.match(js, /tz-save/);
+});

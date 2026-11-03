@@ -82,6 +82,8 @@ export interface DbPragmas { user_version: number; journal_mode: string; busy_ti
 export interface Db {
   getSetting(key: string): string | null;
   setSetting(key: string, value: string): void;
+  getTimezone(): string;
+  setTimezone(tz: string): void;
   createSession(ttlMs: number): { token: string; expiresAt: number };
   findSession(token: string): { expiresAt: number } | null;
   deleteSession(token: string): void;
@@ -99,7 +101,7 @@ export interface Db {
   resolveModel(fullId: string): ResolvedModel | null;
   listModels(): { id: string; provider: string; modelId: string; api: ApiType }[];
   insertEvent(e: UsageEventInput): number;
-  stats(q: { period: StatsPeriod; groupBy: StatsGroupBy }): StatsRow[];
+  stats(q: { period: StatsPeriod; groupBy: StatsGroupBy; timezone?: string }): StatsRow[];
   recentEvents(limit: number): UsageEvent[];
   serialize(): Uint8Array;
   schemaVersion(): number;
@@ -110,14 +112,53 @@ export interface Db {
 
 const hash = (secret: string) => createHash("sha256").update(secret).digest("hex");
 
-const PERIOD_EXPR: Record<StatsPeriod, string> = {
-  // localtime: daily boundaries follow the server's local timezone. Weeks start Monday.
-  daily: "date(ts/1000,'unixepoch','localtime')",
-  weekly: "date(ts/1000,'unixepoch','localtime','weekday 0','-6 days')",
-  monthly: "strftime('%Y-%m', ts/1000,'unixepoch','localtime')",
-  yearly: "strftime('%Y', ts/1000,'unixepoch','localtime')",
-  all: "'all'",
-};
+export const DEFAULT_TIMEZONE = "Asia/Kuala_Lumpur";
+
+export function isValidTimezone(tz: unknown): boolean {
+  if (typeof tz !== "string" || !tz.trim()) return false;
+  try {
+    new Intl.DateTimeFormat(undefined, { timeZone: tz.trim() });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function tzOffsetModifier(ts: number, tz: string): string {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: tz, timeZoneName: "longOffset" }).formatToParts(new Date(ts));
+  const raw = parts.find((p) => p.type === "timeZoneName")?.value || "GMT+00:00";
+  return raw.replace(/^GMT/, "");
+}
+
+export function getDayRange(ts: number, tz: string): { start: number; end: number } {
+  const d = new Date(ts);
+  const isoDate = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(d);
+  const [y, m, day] = isoDate.split("-").map(Number);
+  const guessUtc = Date.UTC(y, m - 1, day, 0, 0, 0);
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "numeric",
+    second: "numeric",
+  }).formatToParts(new Date(guessUtc));
+  const map = Object.fromEntries(parts.map((p) => [p.type, p.value]));
+  const diff = guessUtc - Date.UTC(Number(map.year), Number(map.month) - 1, Number(map.day), Number(map.hour), Number(map.minute), Number(map.second));
+  const start = guessUtc + diff;
+  return { start, end: start + 86400_000 };
+}
+
+function periodExpr(period: StatsPeriod, offset: string): string {
+  if (period === "all") return "'all'";
+  if (period === "daily") return `date(ts/1000,'unixepoch','${offset}')`;
+  if (period === "weekly") return `date(ts/1000,'unixepoch','${offset}','weekday 0','-6 days')`;
+  if (period === "monthly") return `strftime('%Y-%m', ts/1000,'unixepoch','${offset}')`;
+  if (period === "yearly") return `strftime('%Y', ts/1000,'unixepoch','${offset}')`;
+  return "'all'";
+}
 
 const SLUG_RE = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 export const SCHEMA_VERSION = 1;
@@ -261,6 +302,14 @@ export function createDb(path: string, opts: { now?: () => number } = {}): Db {
     },
     setSetting(key, value) {
       sqlite.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(key, value);
+    },
+    getTimezone() {
+      const saved = api.getSetting("timezone");
+      return saved && isValidTimezone(saved) ? saved : DEFAULT_TIMEZONE;
+    },
+    setTimezone(tz) {
+      if (!isValidTimezone(tz)) throw new Error(`Invalid timezone: "${tz}"`);
+      api.setSetting("timezone", (tz as string).trim());
     },
 
     createSession(ttlMs) {
@@ -415,21 +464,19 @@ export function createDb(path: string, opts: { now?: () => number } = {}): Db {
              e.httpStatus, e.streaming ? 1 : 0, e.latencyMs, e.usageMissing ? 1 : 0, e.effort ?? null);
       return Number(info.lastInsertRowid);
     },
-    stats({ period, groupBy }) {
+    stats({ period, groupBy, timezone }) {
+      const tz = timezone && isValidTimezone(timezone) ? timezone : api.getTimezone();
+      const offset = tzOffsetModifier(now(), tz);
       const groupExpr = groupBy === "key" ? "k.name" : groupBy === "provider" ? "e.provider" : "e.provider || '/' || e.model";
-      // "daily" is presented as Today: only the current local calendar day,
-      // not every historical day bucket. Other periods keep their buckets.
       let where = "";
       const params: any[] = [];
       if (period === "daily") {
-        const cur = new Date(now());
-        const startOfDay = new Date(cur.getFullYear(), cur.getMonth(), cur.getDate()).getTime();
-        const endOfDay = new Date(cur.getFullYear(), cur.getMonth(), cur.getDate() + 1).getTime();
+        const range = getDayRange(now(), tz);
         where = "WHERE e.ts >= ? AND e.ts < ?";
-        params.push(startOfDay, endOfDay);
+        params.push(range.start, range.end);
       }
       const rows = sqlite.prepare(`
-        SELECT ${PERIOD_EXPR[period]} AS period, ${groupExpr} AS grp,
+        SELECT ${periodExpr(period, offset)} AS period, ${groupExpr} AS grp,
                COUNT(*) AS requests, COALESCE(SUM(e.input),0) AS input, COALESCE(SUM(e.output),0) AS output,
                COALESCE(SUM(e.cache_read),0) AS cache_read, COALESCE(SUM(e.cache_write),0) AS cache_write
         FROM usage_events e JOIN client_keys k ON k.id = e.client_key_id

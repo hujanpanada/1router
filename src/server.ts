@@ -498,7 +498,23 @@ export function createServer(opts: ServerOptions): http.Server {
         if (!hasSession(req)) return json(res, 401, errBody("Login required", "authentication_error"));
 
         if (req.method === "GET" && path === "/api/me") {
-          return json(res, 200, { authenticated: true, passwordIsDefault: passwordIsDefault(db) });
+          return json(res, 200, { authenticated: true, passwordIsDefault: passwordIsDefault(db), timezone: db.getTimezone() });
+        }
+        if (req.method === "GET" && path === "/api/settings") {
+          return json(res, 200, { timezone: db.getTimezone() });
+        }
+        if (req.method === "POST" && path === "/api/settings") {
+          let body: any;
+          try { body = await readJson(req, 100_000); }
+          catch (e) { if (e instanceof PayloadTooLargeError) return json(res, 413, errBody("Request body is too large.")); throw e; }
+          if (!body) return json(res, 400, errBody("Body must be JSON"));
+          const tz = String(body.timezone ?? "").trim();
+          try {
+            db.setTimezone(tz);
+            return json(res, 200, { ok: true, timezone: db.getTimezone() });
+          } catch (e) {
+            return json(res, 400, errBody((e as Error).message));
+          }
         }
         if (req.method === "POST" && path === "/api/test-request") return await testRequest(req, res);
         if (req.method === "GET" && path === "/api/export") {
@@ -528,9 +544,10 @@ export function createServer(opts: ServerOptions): http.Server {
         if (req.method === "GET" && path === "/api/stats") {
           const period = (url.searchParams.get("period") ?? "daily") as StatsPeriod;
           const groupBy = (url.searchParams.get("groupBy") ?? "provider") as StatsGroupBy;
+          const timezone = url.searchParams.get("timezone") ?? undefined;
           if (!["daily", "weekly", "monthly", "yearly", "all"].includes(period)) return json(res, 400, errBody("Invalid period"));
           if (!["key", "provider", "model"].includes(groupBy)) return json(res, 400, errBody("Invalid groupBy"));
-          return json(res, 200, db.stats({ period, groupBy }));
+          return json(res, 200, db.stats({ period, groupBy, timezone }));
         }
         if (req.method === "GET" && path === "/api/requests") {
           const limit = Math.min(500, Math.max(1, Number(url.searchParams.get("limit") ?? 100) || 100));
