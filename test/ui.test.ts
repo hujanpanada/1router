@@ -166,3 +166,9 @@ test("Precision Telemetry theme and exact control sizing are defined in styleshe
   assert.match(js, /cell-time/);
 });
 
+test("How to Use model capability header is responsive and prevents vertical character breaking on mobile", () => {
+  assert.match(css, /\.model-meta-head\s*\{[^}]*flex-wrap:\s*wrap/);
+  assert.match(css, /@media\s*\([^)]*max-width:\s*(?:640|560|520)px\)\s*\{[^}]*\.model-meta-head/s);
+});
+
+
