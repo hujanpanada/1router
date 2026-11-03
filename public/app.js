@@ -464,6 +464,19 @@ $("export-db").addEventListener("click", () => {
 });
 
 // ---------- settings / logout ----------
+function setTimezoneSelect(tz) {
+  const sel = $("tz-input");
+  if (!sel || !tz) return;
+  let opt = Array.from(sel.options).find((o) => o.value === tz);
+  if (!opt) {
+    opt = document.createElement("option");
+    opt.value = tz;
+    opt.textContent = tz;
+    sel.appendChild(opt);
+  }
+  sel.value = tz;
+}
+
 $("tz-form")?.addEventListener("submit", async (e) => {
   e.preventDefault();
   const btn = $("tz-save");
@@ -471,6 +484,7 @@ $("tz-form")?.addEventListener("submit", async (e) => {
   try {
     const res = await apiJson("/api/settings", "POST", { timezone: $("tz-input").value.trim() });
     appTimezone = res.timezone || $("tz-input").value.trim();
+    setTimezoneSelect(appTimezone);
     $("tz-msg").textContent = `✓ Timezone saved: ${appTimezone}`;
     await loadStats();
   } catch (err) {
@@ -481,7 +495,7 @@ $("tz-form")?.addEventListener("submit", async (e) => {
 });
 $("tz-detect")?.addEventListener("click", () => {
   const detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  if (detected && $("tz-input")) $("tz-input").value = detected;
+  if (detected) setTimezoneSelect(detected);
 });
 
 $("pw-form").addEventListener("submit", async (e) => {
@@ -501,7 +515,7 @@ function showErr(e) { $("status").textContent = "Error: " + e.message; }
     $("default-banner").hidden = !me.passwordIsDefault;
     if (me.timezone) {
       appTimezone = me.timezone;
-      if ($("tz-input")) $("tz-input").value = me.timezone;
+      setTimezoneSelect(me.timezone);
     }
     await loadProviders();
     await loadKeys();

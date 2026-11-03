@@ -269,8 +269,7 @@
       <p class="muted panel-note">Used for the Today filter, statistics periods, and timestamp display across the dashboard. Default is GMT+8 (Asia/Kuala_Lumpur).</p>
       <form id="tz-form" class="stack-form">
         <label class="field">Dashboard timezone
-          <input id="tz-input" list="tz-list" placeholder="Asia/Kuala_Lumpur" required autocomplete="off">
-          <datalist id="tz-list">
+          <select id="tz-input" required>
             <option value="Asia/Kuala_Lumpur">Asia/Kuala_Lumpur (GMT+8)</option>
             <option value="Asia/Singapore">Asia/Singapore (GMT+8)</option>
             <option value="Asia/Jakarta">Asia/Jakarta (GMT+7)</option>
@@ -281,12 +280,12 @@
             <option value="America/Los_Angeles">America/Los_Angeles</option>
             <option value="Asia/Tokyo">Asia/Tokyo (GMT+9)</option>
             <option value="Australia/Sydney">Australia/Sydney</option>
-          </datalist>
+          </select>
         </label>
         <div class="form-actions">
           <span id="tz-msg" class="form-msg"></span>
           <div class="action-group">
-            <button type="button" id="tz-detect" class="btn btn-ghost btn-small">Use browser timezone</button>
+            <button type="button" id="tz-detect" class="btn btn-ghost">Use browser timezone</button>
             <button type="submit" id="tz-save" class="btn btn-primary">Save timezone</button>
           </div>
         </div>
