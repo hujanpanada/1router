@@ -16,6 +16,7 @@ export interface ServerOptions {
   proxyTimeoutMs?: number;
   loginWindowMs?: number;
   loginMaxFailures?: number;
+  now?: () => number;
 }
 
 const PATH_API: Record<string, ApiType> = {
@@ -142,6 +143,7 @@ export function createServer(opts: ServerOptions): http.Server {
   const proxyTimeout = opts.proxyTimeoutMs ?? DEFAULT_PROXY_TIMEOUT;
   const loginWindow = opts.loginWindowMs ?? LOGIN_WINDOW;
   const loginMaxFailures = opts.loginMaxFailures ?? LOGIN_MAX_FAILURES;
+  const now = opts.now ?? (() => Date.now());
   ensureLoginPassword(db);
   db.pruneExpiredSessions();
   const loginFailures = new Map<string, { count: number; resetAt: number }>();
@@ -448,11 +450,11 @@ export function createServer(opts: ServerOptions): http.Server {
         catch (e) { if (e instanceof PayloadTooLargeError) return json(res, 413, errBody("Request body is too large.")); throw e; }
         const ip = req.socket.remoteAddress ?? "unknown";
         const fail = loginFailures.get(ip);
-        if (fail && fail.resetAt > Date.now() && fail.count >= loginMaxFailures) {
+        if (fail && fail.resetAt > now() && fail.count >= loginMaxFailures) {
           return json(res, 429, errBody("Too many failed login attempts. Wait a few minutes and try again.", "rate_limit_error"));
         }
         if (!body || !checkLogin(db, String(body.password ?? ""))) {
-          const state = fail && fail.resetAt > Date.now() ? fail : { count: 0, resetAt: Date.now() + loginWindow };
+          const state = fail && fail.resetAt > now() ? fail : { count: 0, resetAt: now() + loginWindow };
           state.count++;
           loginFailures.set(ip, state);
           const status = state.count > loginMaxFailures ? 429 : 401;

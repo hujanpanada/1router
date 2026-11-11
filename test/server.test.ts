@@ -64,6 +64,7 @@ let db: ReturnType<typeof createDb>;
 let app: http.Server;
 let cookie = "";
 let clientKey = "";
+let simNow = 1_000_000;
 
 async function login(password: string) {
   const res = await fetch(base + "/api/login", {
@@ -86,7 +87,7 @@ before(async () => {
   db.updateProvider(p2.id, { modelMeta: [{ modelId: "gpt-r", imageInput: null, thinking: true, reasoning: null }] });
   const p3 = db.createProvider({ slug: "fakeanthropic", name: "Fake Anthropic", baseUrl: up, api: "anthropic-messages", apiKey: "upstream-secret", models: ["claude-x"] });
   db.updateProvider(p3.id, { modelMeta: [{ modelId: "claude-x", imageInput: false, thinking: true, reasoning: null }] });
-  app = createServer({ db, proxyTimeoutMs: 2000, maxResponseBytes: 100_000, loginWindowMs: 2500, loginMaxFailures: 3 });
+  app = createServer({ db, proxyTimeoutMs: 2000, maxResponseBytes: 100_000, loginWindowMs: 60_000, loginMaxFailures: 3, now: () => simNow });
   await new Promise<void>((r) => app.listen(0, "127.0.0.1", r));
   base = `http://127.0.0.1:${(app.address() as AddressInfo).port}`;
 });
@@ -188,11 +189,14 @@ test("dashboard responses carry security headers", async () => {
   assert.equal(home.headers.get("cache-control"), "no-cache");
 });
 
-test("failed logins are rate limited", async () => {
+test("failed logins are rate limited and reset after window", async () => {
   let last = 0;
   for (let i = 0; i < 4; i++) last = (await login("definitely-wrong" + i)).status;
   assert.equal(last, 429);
-  await new Promise((r) => setTimeout(r, 2600));
+
+  // Advance time past the login window to unblock immediately without sleeping
+  simNow += 60_001;
+  assert.equal((await login("definitely-wrong")).status, 401);
 });
 
 test("client keys cannot access admin APIs (login is separate)", async () => {
@@ -518,9 +522,7 @@ test("GET /api/export preserves the live session and downloads a real SQLite bac
 });
 
 test("logout invalidates the session", async () => {
-  // The preceding rate-limit test exhausts failures from this test IP; wait for a clean login.
-  let res = await login("newpass123");
-  if (res.status === 429) { await new Promise((r) => setTimeout(r, 150)); res = await login("newpass123"); }
+  const res = await login("newpass123");
   const c = (res.headers.get("set-cookie") ?? "").split(";")[0];
   assert.equal((await fetch(base + "/api/me", { headers: { cookie: c } })).status, 200);
   await fetch(base + "/api/logout", { method: "POST", headers: { cookie: c } });

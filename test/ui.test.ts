@@ -107,10 +107,12 @@ test("dashboard labels totals and model settings stay manual", () => {
   assert.match(js, /thinkingLevelMap/);
 });
 
-test("Settings offers SQLite export; README keeps its screenshot", () => {
+test("Settings offers SQLite export; README keeps its screenshot and documents 1.5.0 features", () => {
   assert.match(html, /id="export-db"/);
   assert.match(html, /Download SQLite backup/);
   assert.ok(readme.includes("images/1router-dashboard.png"));
+  assert.match(readme, /Asia\/Kuala_Lumpur/);
+  assert.match(readme, /key:create/);
 });
 
 test("recent requests table displays colored status badges", () => {
