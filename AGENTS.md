@@ -1,110 +1,45 @@
 # AGENTS.md — working on 1Router
 
-Guidance for AI coding agents (and humans) contributing to this repo.
+Guidance for AI coding agents and humans contributing to 1Router.
 
-## What this is
+## Core principles
 
-1Router is a minimal, self-hosted, same-protocol LLM proxy whose single
-job is **counting token usage** (input, output, cache read/write) and
-requests — by client API key, provider, and model, over daily / weekly /
-monthly / yearly / all-time windows. Everything is configured from a
-vanilla web dashboard; all state lives in one SQLite database.
-
-Deliberate non-goals — do not add these without an explicit request:
-cost estimation/pricing, cross-protocol translation, fallback/round-robin
-routing, OAuth/subscription logins, provider catalog sync (e.g. pi.dev),
-frameworks or build tooling for the frontend.
-
-## Ground rules
-
-1. **Always TDD.** Write or update tests first, run them and watch them
-   fail (red), then implement until green. Never skip the red step.
-   Run `npm test` before every commit; `rm -rf dist` first if you suspect
-   stale compiled output (tsc does not delete removed files).
-2. **Minimal, zero runtime dependencies.** Runtime uses only Node built-ins
-   (`node:http`, `node:sqlite`, `node:crypto`, global `fetch`). Dev deps are
-   only `typescript` + `@types/node`. Do not add runtime packages.
-3. **Frontend is vanilla HTML/CSS/JS only** (`public/`). No React/Vue,
-   no bundler, no CSS framework.
-4. **Never log or expose secrets.** Provider API keys are stored in SQLite
-   (they must be retrievable) but must never be returned by any API after
-   saving — only the masked form (`••••last4`). Client API keys and the
-   dashboard password are stored hashed only. The dashboard session cookie
-   must never be forwarded to upstream providers.
-5. **The proxy must stay transparent and non-breaking.** Forward request/
-   response bodies intact; counting happens by observing a copy. A failure
-   in usage recording must never fail the request. Strip `content-encoding`
-   and `set-cookie` from upstream responses (fetch already decompressed the
-   body; forwarding them breaks browser clients), and strip client
-   `authorization` / `x-api-key` / `cookie` headers before forwarding.
+- **Git first:** Never commit directly to `main`. Create a new branch each time (`feature/*`, `fix/*`, `cleanup/*`).
+- **Always TDD:** Write or update tests first, observe red, implement until green. Run `npm test` before every commit (`rm -rf dist` first if stale output is suspected).
+- **Single source of truth:** Avoid fragmented state and duplicate mappings. Keep definitions where they belong.
+- **Less jump-to-definition fatigue:** Avoid pass-through wrappers, unnecessary layers, and indirection. Write straightforward, pragmatic code.
+- **Self-documenting code:** No stupid comments. Good code documents itself; keep comments only when explaining a non-obvious "why" or critical edge case.
+- **Minimal, zero runtime dependencies:** Node built-ins only (`node:http`, `node:sqlite`, `node:crypto`, global `fetch`). Dev deps only `typescript` + `@types/node`.
+- **Vanilla frontend:** HTML/CSS/JS only (`public/`). No bundlers, frameworks, or CSS preprocessors.
+- **Security & transparency:** Mask provider keys (`••••last4`), hash client keys and passwords. Transparent proxying: forward request/response intact, observe usage out-of-band without breaking requests.
 
 ## Architecture
 
 | File | Responsibility |
 |---|---|
-| `src/usage.ts` | Per-API usage extraction + incremental SSE parsing. Normalized `input` always **excludes** cached tokens (no double counting: OpenAI's `cached_tokens` is subtracted; Anthropic separates it natively). |
-| `src/reasoning.ts` | Reasoning-level validation and manual per-model capability resolution. 1Router deliberately does **no** provider/model profile matching. |
-| `src/auth.ts` | Scrypt password hashing, dashboard session helpers, default-password seeding. Default dashboard password is `1router` (seeded hashed, user prompted to change). Never store plaintext. |
-| `src/db.ts` | All SQLite access (`node:sqlite`): settings, sessions, providers, provider_models, client_keys, usage_events, stats aggregation. Usage history migrates in place (schema changes must not drop token counts). |
-| `src/server.ts` | HTTP server: proxy endpoints, dashboard session auth, admin API (`/api/*`), server-side `/api/test-request`, static file serving. |
-| `src/main.ts` | Entrypoint: env config (`PORT`, `HOST`, `DB_PATH`), DB creation, listen. |
-| `src/cli.ts` | Optional terminal key management (`key:create/list/revoke`). |
-| `public/login.html` | Standalone login page (inline CSS/JS). |
-| `public/index.html` / `app.js` / `style.css` | Dashboard SPA (tabs: Dashboard, Providers, API Keys, How to Use, Settings). Auth via HttpOnly session cookie; it must never call `/v1/*` directly from the browser — use `/api/test-request` for tests. |
-| `images/` | README/docs screenshots only (e.g. dashboard screenshot embedded in `README.md`). Not application code, not served by the server. |
+| `src/usage.ts` | Usage extraction & SSE streaming parsing (excludes cached tokens from input). |
+| `src/auth.ts` | Scrypt password hashing & dashboard session auth. |
+| `src/db.ts` | SQLite storage (`node:sqlite`): settings, sessions, providers, keys, usage events, stats aggregation, model capabilities & reasoning validation. |
+| `src/server.ts` | HTTP server: proxy routing, rate limiting, security headers, admin API (`/api/*`), static files. |
+| `src/main.ts` | Entrypoint: configuration & server startup. |
+| `src/cli.ts` | CLI key management (`key:create/list/revoke`). |
+| `public/` | Vanilla dashboard SPA & login page. |
 
-Supported API types (exactly these three): `openai-completions`
-(`POST /v1/chat/completions`), `openai-responses` (`POST /v1/responses`),
-`anthropic-messages` (`POST /v1/messages`). Routing is by
-`model: "<provider-slug>/<modelId>"`, split on the **first** `/`.
-
-Key semantics:
-- Dashboard login (password) and client API keys (`sk-1r-…`) are separate
-  credential systems; neither can substitute for the other.
-- Stats: periods bucket in **server-local time**, weeks start **Monday**
-  (SQLite `weekday 0, -6 days`). Weekly rows display as a Monday–Sunday
-  (or Monday–Today) `YYYY-MM-DD` range — that formatting is UI-only in `app.js`.
-- Streaming completions: the proxy injects `stream_options.include_usage`
-  so the final chunk carries usage.
-- Model capabilities are **display/config metadata only**: they never
-  gate, strip, or rewrite proxy traffic. The intended flow is add provider
-  → probe image/thinking levels via How to Use (`/api/test-request`) →
-  record proven capabilities manually → generate harness config from them.
-  The proxy records the effort the harness actually sent.
-- Proxy robustness: client disconnects abort the upstream request.
-  Request/response size caps are enforced (413 for inbound, observation
-  caps where service guarantees matter, e.g. `fetch-models`). SSE parsing
-  tolerates multi-line `data:` payloads, string token counts, and drops
-  oversized garbage instead of buffering forever.
-- Backup: `/api/export` mirrors the DB and strips sessions from the copy only.
-  Live sessions must survive export; password changes revoke all sessions.
-- Schema: WAL + busy_timeout + foreign keys, schema versioned via
-  `PRAGMA user_version`; provider writes are transactional.
+Supported API types: `openai-completions` (`POST /v1/chat/completions`), `openai-responses` (`POST /v1/responses`), `anthropic-messages` (`POST /v1/messages`). Model routing is `<provider-slug>/<modelId>` split on first `/`.
 
 ## Commands
 
 ```bash
 npm install
-npm test          # build (tsc) + node:test suite
+npm test          # build (tsc) + test suite
 npm start         # build + serve on http://127.0.0.1:8787
-npm run key:create -- <name>   # optional CLI alternative to the UI
+npm run key:create -- <name>
 ```
-
-## Testing conventions
-
-- Tests live in `test/` (Node's built-in runner, compiled to `dist/test/`).
-  UI contracts for `public/` go in `test/ui.test.ts` (static assertions on
-  the served HTML/CSS/JS).
-- Proxy behavior is tested end-to-end in `test/server.test.ts` against a
-  mock upstream HTTP server — extend that mock rather than mocking `fetch`.
-- New user-facing strings should be plain-language and actionable (say
-  what to do, not just what failed). Assume users won't read raw errors.
 
 ## Commits
 
-- Small, focused commits with imperative subjects (e.g. `feat: …`,
-  `fix: …`, `docs: …`).
-- **Every commit message must end with the co-author trailer reflecting the AI model that contributed to it:**
+- Small, focused commits with imperative subjects (`feat: …`, `fix: …`, `cleanup: …`, `refactor: …`).
+- Every commit message must end with the co-author trailer:
 
   ```
   Co-Authored-By: <Model Name>

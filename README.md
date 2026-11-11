@@ -179,9 +179,8 @@ npm start
 ```
 
 Layout: `src/usage.ts` (per-API usage normalization + streaming parsers),
-`src/reasoning.ts` (reasoning level validation + manual per-model capability resolution),
 `src/auth.ts` (scrypt password hashing, session tokens, default seeding),
-`src/db.ts` (SQLite storage: settings, timezone, sessions, providers, keys, usage, stats),
+`src/db.ts` (SQLite storage: settings, timezone, sessions, providers, model capabilities & reasoning, keys, usage, stats),
 `src/server.ts` (proxy, rate limiting, security headers, admin API, static files),
 `src/cli.ts` (optional CLI key management),
 `public/` (vanilla HTML/CSS/JS dashboard, dark telemetry theme). See `AGENTS.md` if you're an AI assistant working on this repo.

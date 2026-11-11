@@ -1,7 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createDb, type UsageEventInput } from "../src/db.js";
-import { capabilityFor } from "../src/reasoning.js";
+import { createDb, validateReasoning, type UsageEventInput } from "../src/db.js";
 
 function ev(partial: Partial<UsageEventInput>): UsageEventInput {
   return {
@@ -56,27 +55,16 @@ test("db has schema version, WAL/busy pragmas; key lastUsed throttled", async ()
   rmSync(path, { force: true }); rmSync(path + "-wal", { force: true }); rmSync(path + "-shm", { force: true });
 });
 
-test("serialize strips sessions from the copy but leaves live sessions intact", async () => {
-  const { writeFileSync, rmSync } = await import("node:fs");
-  const db = createDb(":memory:");
-  const s = db.createSession(60_000);
-  const bytes = db.serialize();
-  assert.ok(db.findSession(s.token), "live session must survive export");
-  const path = "test-serialize-tmp.db";
-  writeFileSync(path, bytes);
-  const restored = createDb(path);
-  assert.equal(restored.findSession(s.token), null);
-  restored.close();
-  rmSync(path, { force: true }); rmSync(path + "-wal", { force: true }); rmSync(path + "-shm", { force: true });
-});
-
 test("changeLoginPassword revokes all sessions; pruneExpiredSessions cleans up", () => {
   const db = createDb(":memory:");
   db.setSetting("login_password_hash", "HASH");
   const s = db.createSession(60_000);
   assert.ok(db.findSession(s.token));
-  db.deleteAllSessions();
+  db.deleteSession(s.token);
   assert.equal(db.findSession(s.token), null);
+  const s2 = db.createSession(60_000);
+  db.deleteAllSessions();
+  assert.equal(db.findSession(s2.token), null);
   const old = db.createSession(-1000);
   assert.equal(db.pruneExpiredSessions(), 1);
   assert.ok(db.findSession(old.token) === null);
@@ -120,17 +108,12 @@ test("providers persist explicit multimodal guards separately from reasoning pro
   ]);
 });
 
-test("capabilityFor never matches built-in model profiles", () => {
-  assert.equal(capabilityFor("openai", "gpt-5").reasoning, null);
-  assert.equal(capabilityFor("anthropic", "claude-sonnet-5").reasoning, null);
-  const manual = capabilityFor("openai", "gpt-5", {
-    imageInput: true,
-    thinking: true,
-    reasoning: { levels: ["minimal", "max"], defaultLevel: "max" },
-  });
-  assert.equal(manual.imageInput, true);
-  assert.deepEqual(manual.reasoning?.levels, ["minimal", "max"]);
-  assert.equal(manual.defaultEffort, "max");
+test("validateReasoning validates levels and defaults", () => {
+  assert.equal(validateReasoning(null, "test"), null);
+  const profile = validateReasoning({ levels: ["max", "minimal"], defaultLevel: "max" }, "test");
+  assert.deepEqual(profile, { levels: ["minimal", "max"], defaultLevel: "max", source: "manual" });
+  assert.throws(() => validateReasoning({ levels: ["bogus"] }, "test"), /invalid reasoning level/i);
+  assert.throws(() => validateReasoning({ levels: ["low"], defaultLevel: "high" }, "test"), /invalid reasoning defaultlevel/i);
 });
 
 test("thinking metadata is stored separately from image metadata", () => {
@@ -160,21 +143,6 @@ test("thinking metadata is stored separately from image metadata", () => {
   assert.equal(db.resolveModel("thinking/unset-model")?.thinking, null);
 });
 
-// ---------- login password + sessions ----------
-test("password settings: seeded on demand, changeable; sessions expire/revoke", () => {
-  const db = createDb(":memory:");
-  assert.equal(db.getSetting("login_password_hash"), null);
-  db.setSetting("login_password_hash", "HASH1");
-  assert.equal(db.getSetting("login_password_hash"), "HASH1");
-
-  const s = db.createSession(60_000);
-  assert.ok(db.findSession(s.token));
-  db.deleteSession(s.token);
-  assert.equal(db.findSession(s.token), null);
-
-  const expired = db.createSession(-1000);
-  assert.equal(db.findSession(expired.token), null);
-});
 
 // ---------- providers stored in DB ----------
 test("providers: CRUD + resolveModel from DB (split on first slash)", () => {
@@ -308,10 +276,12 @@ test("serialize produces a restorable backup without sessions", async () => {
   const k = db.createKey("backup-key");
   db.createProvider({ slug: "openai", name: "OpenAI", baseUrl: "https://api.openai.com/v1", api: "openai-responses", apiKey: "secret", models: ["gpt-5"] });
   db.setSetting("login_password_hash", "HASH");
-  db.createSession(60_000);
+  const s = db.createSession(60_000);
   db.insertEvent(ev({ clientKeyId: k.id }));
+  const bytes = db.serialize();
+  assert.ok(db.findSession(s.token), "live session must survive export");
   const path = "test-backup-tmp.db";
-  writeFileSync(path, db.serialize());
+  writeFileSync(path, bytes);
   const restored = createDb(path);
   assert.equal(restored.schemaVersion(), 1);
   assert.equal(restored.findKeyBySecret(k.key)?.name, "backup-key");

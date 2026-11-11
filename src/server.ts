@@ -4,7 +4,6 @@ import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Db, ModelMeta, StatsGroupBy, StatsPeriod } from "./db.js";
 import { extractUsage, StreamUsageCollector, type ApiType, type NormalizedUsage } from "./usage.js";
-import { capabilityFor } from "./reasoning.js";
 import { changeLoginPassword, checkLogin, ensureLoginPassword, passwordIsDefault, SESSION_TTL_MS } from "./auth.js";
 
 export interface ServerOptions {
@@ -19,21 +18,17 @@ export interface ServerOptions {
   now?: () => number;
 }
 
-const PATH_API: Record<string, ApiType> = {
-  "/v1/chat/completions": "openai-completions",
-  "/v1/responses": "openai-responses",
-  "/v1/messages": "anthropic-messages",
-};
-const INTERNAL_PROBE_PATH: Record<string, string> = {
-  "/internal/probe/chat/completions": "/v1/chat/completions",
-  "/internal/probe/responses": "/v1/responses",
-  "/internal/probe/messages": "/v1/messages",
-};
-const API_PATH: Record<ApiType, string> = {
+export const API_ENDPOINTS: Record<ApiType, string> = {
   "openai-completions": "/chat/completions",
   "openai-responses": "/responses",
   "anthropic-messages": "/messages",
 };
+const API_BY_PATH: Record<string, ApiType> = Object.fromEntries(
+  (Object.entries(API_ENDPOINTS) as [ApiType, string][]).flatMap(([api, sub]) => [
+    [`/v1${sub}`, api],
+    [`/internal/probe${sub}`, api],
+  ])
+);
 const STATIC: Record<string, string> = { "/": "index.html", "/index.html": "index.html", "/app.js": "app.js", "/style.css": "style.css" };
 const MIME: Record<string, string> = { ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8" };
 const SESSION_COOKIE = "1router_session";
@@ -113,10 +108,14 @@ export function publicProvider(p: ReturnType<Db["listProviders"]>[number]) {
     name: p.name,
     baseUrl: p.baseUrl,
     api: p.api,
-    models: p.models.map((m: ModelMeta) => {
-      const cap = capabilityFor(p.slug, m.modelId, m);
-      return { modelId: m.modelId, id: m.modelId, imageInput: m.imageInput, thinking: m.thinking, reasoning: cap.reasoning, defaultEffort: cap.defaultEffort };
-    }),
+    models: p.models.map((m: ModelMeta) => ({
+      modelId: m.modelId,
+      id: m.modelId,
+      imageInput: m.imageInput,
+      thinking: m.thinking,
+      reasoning: m.reasoning,
+      defaultEffort: m.reasoning?.defaultLevel ?? "provider",
+    })),
     apiKeyMasked: maskKey(p.apiKey),
     createdAt: p.createdAt,
   };
@@ -222,7 +221,7 @@ export function createServer(opts: ServerOptions): http.Server {
 
     let upstream: Response;
     try {
-      upstream = await fetchFn(target.baseUrl + API_PATH[target.api], {
+      upstream = await fetchFn(target.baseUrl + API_ENDPOINTS[target.api], {
         method: "POST", headers, body: JSON.stringify(upstreamBody), signal: controller.signal,
       });
     } catch (e) {
@@ -377,8 +376,9 @@ export function createServer(opts: ServerOptions): http.Server {
     const host = addr.includes(":") ? `[${addr}]` : addr;
     const started = Date.now();
     try {
-      const probePath = target.api === "anthropic-messages" ? "/internal/probe/messages" : target.api === "openai-responses" ? "/internal/probe/responses" : "/internal/probe/chat/completions";
-      const r = await fetchFn(`http://${host}:${port}${tryImage ? probePath : "/v1" + API_PATH[target.api]}`, {
+      const endpoint = API_ENDPOINTS[target.api];
+      const targetPath = tryImage ? `/internal/probe${endpoint}` : `/v1${endpoint}`;
+      const r = await fetchFn(`http://${host}:${port}${targetPath}`, {
         method: "POST", headers, body: JSON.stringify(payload), signal: AbortSignal.timeout(60_000),
       });
       const { text } = await readResponseText(r, maxResponse);
@@ -492,8 +492,7 @@ export function createServer(opts: ServerOptions): http.Server {
         if (!authenticateKey(req)) return json(res, 401, errBody("Invalid or missing 1Router API key", "authentication_error"));
         return json(res, 200, { object: "list", data: db.listModels().map((m) => ({ id: m.id, object: "model", owned_by: m.provider })) });
       }
-      if (req.method === "POST" && path in INTERNAL_PROBE_PATH) return await proxy(req, res, PATH_API[INTERNAL_PROBE_PATH[path]]);
-      if (req.method === "POST" && path in PATH_API) return await proxy(req, res, PATH_API[path]);
+      if (req.method === "POST" && path in API_BY_PATH) return await proxy(req, res, API_BY_PATH[path]);
 
       const isAdmin = path.startsWith("/api/");
       if (isAdmin) {

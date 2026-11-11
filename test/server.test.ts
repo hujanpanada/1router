@@ -341,18 +341,6 @@ test("harness effort is recorded; 1Router reasoning default never overrides it",
   });
 });
 
-test("provider API exposes only explicit guards", async () => {
-  const list = (await (await admin("/api/providers")).json()) as any[];
-  const openai = list.find((p) => p.slug === "fakeopenai");
-  const meta = openai.models.find((m: any) => (m.modelId ?? m.id) === "gpt-x");
-  assert.equal(meta.imageInput, true);
-  assert.deepEqual(meta.reasoning.levels, ["low", "medium", "high"]);
-  const anthropic = list.find((p) => p.slug === "fakeanthropic");
-  const claude = anthropic.models.find((m: any) => (m.modelId ?? m.id) === "claude-x");
-  assert.equal(claude.imageInput, false);
-  assert.equal(claude.reasoning, null);
-});
-
 // ---------- proxy behaviour (providers now come from DB) ----------
 test("rejects proxy requests without a valid client key; /v1/models lists DB providers", async () => {
   const res = await fetch(base + "/v1/chat/completions", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });

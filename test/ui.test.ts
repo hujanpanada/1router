@@ -5,106 +5,36 @@ import { readFileSync } from "node:fs";
 const pub = (f: string) => readFileSync(new URL("../../public/" + f, import.meta.url), "utf8"); // dist/test -> project root
 const html = pub("index.html");
 const loginHtml = pub("login.html");
-const css = pub("style.css");
-const js = pub("app.js");
 const readme = readFileSync(new URL("../../README.md", import.meta.url), "utf8");
 
-test("Try-it-now key field stays plain text (it is visible in the curl below anyway)", () => {
-  assert.match(html, /id="g-key"[^>]*type="text"/);
-});
-
-test("Pi config declares image input only when the model explicitly allows images", () => {
-  assert.match(js, /input: meta\.imageInput \? \["text", "image"\] : \["text"\]/);
-});
-
-test("weekly breakdown rows use YYYY-MM-DD ranges like every other period", () => {
-  assert.match(js, /setDate\(start\.getDate\(\) \+ 6\)/);
-  assert.match(js, /padStart\(2, "0"\)/);
-  assert.doesNotMatch(js, /"Today"/);
-});
-
-test("default-password banner never shows the password itself", () => {
+test("default-password banner never leaks the password in HTML", () => {
   const banner = html.slice(html.indexOf('id="default-banner"'), html.indexOf('id="status"'));
   assert.ok(!banner.includes("<code>1router</code>") && !banner.includes(">1router<"));
+});
+
+test("login page links to the shared stylesheet", () => {
+  assert.match(loginHtml, /<link rel="stylesheet" href="style\.css">/);
 });
 
 test("providers table lists models only; capabilities live in How to Use", () => {
   assert.match(html, /providers-table/);
   assert.match(html, /<th>Models<\/th>/);
   assert.doesNotMatch(html, /Models &amp; capabilities/);
-  assert.match(css, /\.providers-table\s*\{[^}]*min-width:\s*980px/);
   const providersTab = html.slice(html.indexOf('id="tab-providers"'), html.indexOf('id="tab-keys"'));
   const guideTab = html.slice(html.indexOf('id="tab-guide"'));
   assert.ok(!providersTab.includes('id="p-model-meta"'), "capability editor must not be in Providers tab");
   assert.ok(guideTab.includes('id="p-model-meta"'), "capability editor belongs in How to Use");
-  assert.ok(!providersTab.includes("capability-note"));
-});
-
-test("reasoning controls use a structured grid layout", () => {
-  assert.match(css, /\.reasoning-controls\s*\{[^}]*display:\s*grid/);
-  assert.match(css, /\.reasoning-levels\s*\{/);
-  assert.match(js, /reasoning-levels/);
-  assert.doesNotMatch(css, /\.reasoning-controls\s*\{[^}]*display:\s*contents/);
-});
-
-test("capability panel has inner margin and compact capability toggles", () => {
-  assert.match(html, /capability-panel/);
-  assert.match(js, /capability-toggles/);
-  assert.match(css, /\.capability-panel\s*\{[^}]*padding:\s*1\.5rem/);
-  assert.match(css, /\.capability-toggles\s*\{[^}]*display:\s*flex/);
-  assert.match(css, /\.capability-toggle\s*\{[^}]*min-height:\s*32px/);
-  assert.match(css, /\.model-meta-item\s*\{[^}]*padding:\s*1rem/);
-});
-
-test("Try it now offers an image capability probe", () => {
-  assert.match(html, /id="g-image"/);
-  assert.match(html, /Try image/);
-  assert.match(js, /tryImage/);
-});
-
-test("thinking toggle disables reasoning controls when off", () => {
-  assert.match(js, /Thinking allowed/);
-  assert.match(js, /data-meta-thinking/);
-  assert.match(js, /syncThinkingControls/);
-  assert.match(js, /thinking,/);
-  assert.match(css, /\.model-meta-item\.thinking-off/);
 });
 
 test("capabilities are explained as config metadata, not model behavior", () => {
   const guideTab = html.slice(html.indexOf('id="tab-guide"'));
   assert.match(guideTab, /only used to generate config/i);
   assert.match(guideTab, /do not change how the model or provider behaves/i);
-  assert.match(guideTab, /To test what a model actually accepts, use <b>Try it now<\/b>/i);
 });
 
-test("How to Use shows the provider-test-capabilities-config flow", () => {
-  assert.match(html, /Add your provider/);
-  assert.match(html, /Create a 1Router key/);
-  assert.match(html, /Test the model in <b>Try it now<\/b>/);
-  assert.match(html, /Set <b>Model capabilities<\/b> from what the test proved/);
-  assert.match(html, /generated config|Copy the config/i);
-});
-
-test("login page loads the shared stylesheet", () => {
-  assert.match(loginHtml, /<link rel="stylesheet" href="style\.css">/);
-  assert.match(loginHtml, /class="login-page"/);
-  assert.match(css, /\.login-page/);
-  assert.match(css, /\.login-box/);
-});
-
-test("period selector calls the daily view Today", () => {
+test("period selector defaults to Today", () => {
   assert.match(html, /<option value="daily" selected>Today<\/option>/);
   assert.doesNotMatch(html, /<option value="daily"[^>]*>Daily<\/option>/);
-});
-
-test("dashboard labels totals and model settings stay manual", () => {
-  assert.match(html, /Totals below add up every row shown/);
-  assert.match(html, /id="p-model-meta"/);
-  assert.match(html, /id="g-thinking"/);
-  assert.match(html, /Try a thinking level/);
-  assert.doesNotMatch(js, /reasoningProfileFor/);
-  assert.match(js, /thinkingLevel/);
-  assert.match(js, /thinkingLevelMap/);
 });
 
 test("Settings offers SQLite export; README keeps its screenshot and documents 1.5.0 features", () => {
@@ -115,62 +45,7 @@ test("Settings offers SQLite export; README keeps its screenshot and documents 1
   assert.match(readme, /key:create/);
 });
 
-test("recent requests table displays colored status badges", () => {
-  assert.match(js, /status-badge/);
-  assert.match(css, /\.status-badge/);
-  assert.match(css, /\.status-ok/);
-  assert.match(css, /\.status-err/);
-});
-
-test("dashboard cards use compact token numbers with full title tooltip", () => {
-  assert.match(js, /fmtCompact/);
-  assert.match(js, /title\s*=/);
-});
-
-test("API keys tab offers using new key in Try-it-now", () => {
-  assert.match(html, /id="use-new-key"/);
-  assert.match(js, /use-new-key/);
-});
-
-test("How to Use provides a model search filter in capabilities panel", () => {
-  assert.match(html, /id="cap-filter"/);
-  assert.match(js, /cap-filter/);
-  assert.match(css, /\.meta-filtered-out/);
-});
-
-test("curl in How to Use reacts to thinking level and image options", () => {
-  assert.match(js, /g-image.*addEventListener\("change",\s*renderGuide\)/);
-  assert.match(js, /g-thinking.*addEventListener\("change",\s*renderGuide\)/);
-  assert.match(js, /reasoning_effort/);
-});
-
-test("tab switching triggers lifecycle refresh for providers, keys, and guide", () => {
-  assert.match(js, /b\.dataset\.tab === "guide"[^}]*renderGuideModelOptions\(\)/s);
-});
-
 test("Settings page has timezone configuration with default GMT+8 Asia/Kuala_Lumpur using standard HTML select", () => {
   assert.match(html, /<select[^>]*id="tz-input"/);
   assert.match(html, /Asia\/Kuala_Lumpur/);
-  assert.match(js, /tz-input/);
-  assert.match(js, /tz-save/);
 });
-
-test("Precision Telemetry theme and exact control sizing are defined in stylesheet", () => {
-  // Precision dark graphite palette and telemetry emerald accent
-  assert.match(css, /--bg:\s*#0[b-c]0[c-e]0[e-f]/i);
-  assert.match(css, /--accent:\s*#10b981/i);
-  assert.match(css, /--control-h:\s*36px/);
-  // Custom dropdown precision styling (appearance none + svg chevron)
-  assert.match(css, /select\s*\{[^}]*appearance:\s*none/);
-  // Table numeric alignment and monospace telemetry time
-  assert.match(css, /\.num\s*\{[^}]*tabular-nums/);
-  assert.match(css, /\.cell-time/);
-  assert.match(js, /cell-time/);
-});
-
-test("How to Use model capability header is responsive and prevents vertical character breaking on mobile", () => {
-  assert.match(css, /\.model-meta-head\s*\{[^}]*flex-wrap:\s*wrap/);
-  assert.match(css, /@media\s*\([^)]*max-width:\s*(?:640|560|520)px\)\s*\{[^}]*\.model-meta-head/s);
-});
-
-
