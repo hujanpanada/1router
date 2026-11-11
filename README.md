@@ -57,8 +57,9 @@ for your providers (see the How to Use tab in the dashboard).
 Requirements: Node.js ≥ 22.19.
 
 ```bash
+cp .env.example .env   # copy default environment settings
 npm install
-npm start          # http://127.0.0.1:8787
+npm start              # http://127.0.0.1:8787
 ```
 
 Open **http://127.0.0.1:8787** and log in. The first-run dashboard
@@ -163,7 +164,15 @@ Endpoints by API type:
 - **Transport hygiene**: Upstream responses are forwarded with clean transport headers (`content-encoding` and `set-cookie` are stripped after decompression to prevent browser fetch failures). Aborted client requests immediately terminate upstream fetches.
 - **Configurable timezone**: Stored in SQLite settings (default `Asia/Kuala_Lumpur` / GMT+8). Drives the Today calendar boundary, aggregation bucketing, and dashboard timestamp displays.
 
-Env: `PORT` (8787), `HOST` (127.0.0.1), `DB_PATH` (`data/1router.db`).
+### Environment configuration
+
+Configuration can be set via `.env` (copied from `.env.example`) or environment variables:
+
+| Variable | Default | Description |
+|---|---|---|
+| `PORT` | `8787` | Port for the proxy server and dashboard |
+| `HOST` | `127.0.0.1` | Host interface (`127.0.0.1` recommended for local security) |
+| `DB_PATH` | `data/1router.db` | Path to the SQLite database file |
 
 ### Settings & backup
 

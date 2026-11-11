@@ -4,6 +4,8 @@ import { createDb } from "./db.js";
 import { createServer } from "./server.js";
 import { ensureLoginPassword, passwordIsDefault, DEFAULT_PASSWORD } from "./auth.js";
 
+try { process.loadEnvFile(); } catch {}
+
 const port = Number(process.env.PORT ?? 8787);
 const host = process.env.HOST ?? "127.0.0.1";
 const dbPath = process.env.DB_PATH ?? "data/1router.db";

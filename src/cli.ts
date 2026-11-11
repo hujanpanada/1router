@@ -2,6 +2,8 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { createDb } from "./db.js";
 
+try { process.loadEnvFile(); } catch {}
+
 const dbPath = process.env.DB_PATH ?? "data/1router.db";
 mkdirSync(dirname(dbPath), { recursive: true });
 const db = createDb(dbPath);
