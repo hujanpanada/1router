@@ -86,7 +86,7 @@ before(async () => {
   db.updateProvider(p2.id, { modelMeta: [{ modelId: "gpt-r", imageInput: null, thinking: true, reasoning: null }] });
   const p3 = db.createProvider({ slug: "fakeanthropic", name: "Fake Anthropic", baseUrl: up, api: "anthropic-messages", apiKey: "upstream-secret", models: ["claude-x"] });
   db.updateProvider(p3.id, { modelMeta: [{ modelId: "claude-x", imageInput: false, thinking: true, reasoning: null }] });
-  app = createServer({ db, proxyTimeoutMs: 2000, maxResponseBytes: 100_000, loginWindowMs: 1200, loginMaxFailures: 10 });
+  app = createServer({ db, proxyTimeoutMs: 2000, maxResponseBytes: 100_000, loginWindowMs: 2500, loginMaxFailures: 3 });
   await new Promise<void>((r) => app.listen(0, "127.0.0.1", r));
   base = `http://127.0.0.1:${(app.address() as AddressInfo).port}`;
 });
@@ -190,9 +190,9 @@ test("dashboard responses carry security headers", async () => {
 
 test("failed logins are rate limited", async () => {
   let last = 0;
-  for (let i = 0; i < 11; i++) last = (await login("definitely-wrong" + i)).status;
+  for (let i = 0; i < 4; i++) last = (await login("definitely-wrong" + i)).status;
   assert.equal(last, 429);
-  await new Promise((r) => setTimeout(r, 1300));
+  await new Promise((r) => setTimeout(r, 2600));
 });
 
 test("client keys cannot access admin APIs (login is separate)", async () => {
