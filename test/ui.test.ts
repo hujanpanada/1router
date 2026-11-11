@@ -37,10 +37,10 @@ test("period selector defaults to Today", () => {
   assert.doesNotMatch(html, /<option value="daily"[^>]*>Daily<\/option>/);
 });
 
-test("Settings offers SQLite export; README keeps its screenshot and documents 1.5.0 features", () => {
+test("Settings offers SQLite export; README keeps its screenshot and documents features", () => {
   assert.match(html, /id="export-db"/);
   assert.match(html, /Download SQLite backup/);
-  assert.ok(readme.includes("images/1router-dashboard.png"));
+  assert.ok(readme.includes("images/1router-dashboard-2.png"));
   assert.match(readme, /Asia\/Kuala_Lumpur/);
   assert.match(readme, /key:create/);
 });

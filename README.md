@@ -13,7 +13,7 @@ No config files, no cloud account, no telemetry: everything (providers,
 keys, usage history) lives in one local SQLite database and is managed
 from a built-in web dashboard.
 
-![1Router dashboard — API token usage by provider, with recent requests](images/1router-dashboard.png)
+![1Router dashboard — API token usage by provider, with recent requests](images/1router-dashboard-2.png)
 
 - 🧮 **Accurate token tracking** — Today / weekly / monthly / yearly / all-time totals, with cache read/write separation and no double counting
 - 🌐 **Configurable timezone** — default GMT+8 (`Asia/Kuala_Lumpur`) or auto-detected from browser, ensuring daily boundaries align with your schedule
